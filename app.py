@@ -16,7 +16,6 @@ def init_db():
     conn = get_db()
     cursor = conn.cursor()
     
-    # 1. Utenti di Sistema (Admin, Superuser, User)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS sys_users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -30,7 +29,6 @@ def init_db():
         )
     ''')
     
-    # 2. Istruttori
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS instructors (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -42,7 +40,6 @@ def init_db():
         )
     ''')
     
-    # 3. Sale
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS rooms (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +48,6 @@ def init_db():
         )
     ''')
     
-    # 4. Corsi
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS courses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,7 +62,6 @@ def init_db():
         )
     ''')
     
-    # 5. Clienti (con PIN per accesso da Web App Mobile)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS clients (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,7 +73,6 @@ def init_db():
         )
     ''')
     
-    # 6. Prenotazioni
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS bookings (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,7 +85,6 @@ def init_db():
         )
     ''')
     
-    # Crea un admin di default se non esiste
     cursor.execute("SELECT * FROM sys_users WHERE username = 'admin'")
     if not cursor.fetchone():
         hashed_pw = generate_password_hash('admin123')
@@ -103,7 +96,7 @@ def init_db():
 
 init_db()
 
-# --- TEMPLATE LAYOUT ADMIN (Ottimizzato per PC / Responsive) ---
+# --- TEMPLATE LAYOUT ADMIN ---
 LAYOUT_ADMIN = '''
 <!doctype html>
 <html lang="it">
@@ -177,8 +170,6 @@ LAYOUT_ADMIN = '''
 </html>
 '''
 
-# --- ROTTE ADMIN / STAFF ---
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -238,7 +229,8 @@ def index():
     
     giorni = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
     
-    content = '''
+    # HTML formattato correttamente come stringa multilinea senza interruzioni nei tag Jinja
+    content = """
     <h2 class="mb-4"><i class="bi bi-calendar-week"></i> Calendario Settimanale e Prenotazioni</h2>
     
     <div class="card shadow-sm mb-4">
@@ -248,13 +240,17 @@ def index():
                 <div class="col-md-4"><label class="form-label">Cliente</label>
                     <select name="client_id" class="form-select" required>
                         <option value="">Seleziona...</option>
-                        {% for cl in clients %}<option value="{{ cl.id }}">{{ cl.nome }} {{ cl.cognome }}</option>{% endfor %}
+                        {% for cl in clients %}
+                        <option value="{{ cl.id }}">{{ cl.nome }} {{ cl.cognome }}</option>
+                        {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-4"><label class="form-label">Corso</label>
                     <select name="course_id" class="form-select" required>
                         <option value="">Seleziona...</option>
-                        {% for c in courses %}<option value="{{ c.id }}">{{ c.nome }} ({{ c.giorno }} - {{ c.orario }})</option>{% endfor %}
+                        {% for c in courses %}
+                        <option value="{{ c.id }}">{{ c.nome }} ({{ c.giorno }} - {{ c.orario }})</option>
+                        {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-2"><label class="form-label">Data</label><input type="date" name="data_appuntamento" class="form-control" required></div>
@@ -279,7 +275,9 @@ def index():
                             </div>
                         {% endif %}
                     {% endfor %}
-                    {% if not ns.found %}<p class="text-muted small">Nessun corso programmato.</p>{% endif %}
+                    {% if not ns.found %}
+                        <p class="text-muted small">Nessun corso programmato.</p>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -303,7 +301,7 @@ def index():
             </tbody>
         </table>
     </div>
-    '''
+    """
     return render_template_string(LAYOUT_ADMIN, body=content, giorni=giorni, courses=courses, clients=clients, bookings=bookings)
 
 @app.route('/book', methods=['POST'])
@@ -327,7 +325,6 @@ def delete_booking(id):
     flash('Prenotazione rimossa.', 'success')
     return redirect(url_for('index'))
 
-# Gestione Utenti di Sistema (Admin/Superuser)
 @app.route('/users', methods=['GET', 'POST'])
 def manage_users():
     if 'user_id' not in session or session.get('role') not in ['admin', 'superuser']:
@@ -353,7 +350,7 @@ def manage_users():
     users = conn.execute('SELECT * FROM sys_users').fetchall()
     conn.close()
     
-    content = '''
+    content = """
     <h2>Gestione Utenti di Sistema</h2>
     <div class="card shadow-sm mb-4 p-3">
         <h5>Nuovo Utente</h5>
@@ -369,7 +366,10 @@ def manage_users():
             <div class="col-md-2"><label>Ruolo</label>
                 <select name="role" class="form-select">
                     <option value="user">User</option>
-                    {% if session.get('role') == 'admin' %}<option value="superuser">Superuser</option><option value="admin">Admin</option>{% endif %}
+                    {% if session.get('role') == 'admin' %}
+                    <option value="superuser">Superuser</option>
+                    <option value="admin">Admin</option>
+                    {% endif %}
                 </select>
             </div>
             <div class="col-md-2"><label>Nome</label><input type="text" name="nome" class="form-control"></div>
@@ -407,7 +407,7 @@ def manage_users():
             </tbody>
         </table>
     </div>
-    '''
+    """
     return render_template_string(LAYOUT_ADMIN, body=content, users=users)
 
 @app.route('/instructors', methods=['GET', 'POST'])
@@ -422,7 +422,7 @@ def manage_instructors():
     instructors = conn.execute('SELECT * FROM instructors').fetchall()
     conn.close()
     
-    content = '''
+    content = """
     <h2>Gestione Istruttori</h2>
     <div class="card shadow-sm mb-4 p-3">
         <h5>Nuovo Istruttore</h5>
@@ -445,7 +445,7 @@ def manage_instructors():
             </tbody>
         </table>
     </div>
-    '''
+    """
     return render_template_string(LAYOUT_ADMIN, body=content, instructors=instructors)
 
 @app.route('/rooms', methods=['GET', 'POST'])
@@ -459,7 +459,7 @@ def manage_rooms():
     rooms = conn.execute('SELECT * FROM rooms').fetchall()
     conn.close()
     
-    content = '''
+    content = """
     <h2>Gestione Sale</h2>
     <div class="card shadow-sm mb-4 p-3">
         <h5>Nuova Sala</h5>
@@ -473,7 +473,7 @@ def manage_rooms():
         <thead><tr><th>Nome</th><th>Capienza</th></tr></thead>
         <tbody>{% for r in rooms %}<tr><td>{{ r.nome }}</td><td>{{ r.capienza }} persone</td></tr>{% endfor %}</tbody>
     </table>
-    '''
+    """
     return render_template_string(LAYOUT_ADMIN, body=content, rooms=rooms)
 
 @app.route('/courses', methods=['GET', 'POST'])
@@ -491,7 +491,7 @@ def manage_courses():
     conn.close()
     giorni = ['Lunedì', 'Martedì', 'Mercoledì', 'Giovedì', 'Venerdì', 'Sabato', 'Domenica']
     
-    content = '''
+    content = """
     <h2>Gestione Corsi, Orari e Sale</h2>
     <div class="card shadow-sm mb-4 p-3">
         <h5>Nuovo Corso</h5>
@@ -500,17 +500,23 @@ def manage_courses():
             <div class="col-md-3"><label>Descrizione</label><input type="text" name="descrizione" class="form-control"></div>
             <div class="col-md-3"><label>Istruttore</label>
                 <select name="instructor_id" class="form-select">
-                    {% for i in instructors %}<option value="{{ i.id }}">{{ i.nome }} {{ i.cognome }}</option>{% endfor %}
+                    {% for i in instructors %}
+                    <option value="{{ i.id }}">{{ i.nome }} {{ i.cognome }}</option>
+                    {% endfor %}
                 </select>
             </div>
             <div class="col-md-3"><label>Sala</label>
                 <select name="room_id" class="form-select">
-                    {% for r in rooms %}<option value="{{ r.id }}">{{ r.nome }}</option>{% endfor %}
+                    {% for r in rooms %}
+                    <option value="{{ r.id }}">{{ r.nome }}</option>
+                    {% endfor %}
                 </select>
             </div>
             <div class="col-md-3"><label>Giorno</label>
                 <select name="giorno" class="form-select">
-                    {% for g in giorni %}<option value="{{ g }}">{{ g }}</option>{% endfor %}
+                    {% for g in giorni %}
+                    <option value="{{ g }}">{{ g }}</option>
+                    {% endfor %}
                 </select>
             </div>
             <div class="col-md-3"><label>Orario (es. 10:00 - 11:00)</label><input type="text" name="orario" class="form-control" required></div>
@@ -527,7 +533,7 @@ def manage_courses():
             </tbody>
         </table>
     </div>
-    '''
+    """
     return render_template_string(LAYOUT_ADMIN, body=content, courses=courses, instructors=instructors, rooms=rooms, giorni=giorni)
 
 @app.route('/clients', methods=['GET', 'POST'])
@@ -545,7 +551,7 @@ def manage_clients():
     clients = conn.execute('SELECT * FROM clients').fetchall()
     conn.close()
     
-    content = '''
+    content = """
     <h2>Gestione Clienti (Accesso Web App Mobile)</h2>
     <div class="card shadow-sm mb-4 p-3">
         <h5>Nuovo Cliente</h5>
@@ -568,7 +574,7 @@ def manage_clients():
             </tbody>
         </table>
     </div>
-    '''
+    """
     return render_template_string(LAYOUT_ADMIN, body=content, clients=clients)
 
 
@@ -692,7 +698,9 @@ def client_dashboard():
                         <div class="col-md-6">
                             <label>Corso</label>
                             <select name="course_id" class="form-select" required>
-                                {% for c in courses %}<option value="{{ c.id }}">{{ c.nome }} ({{ c.giorno }} - {{ c.orario }})</option>{% endfor %}
+                                {% for c in courses %}
+                                <option value="{{ c.id }}">{{ c.nome }} ({{ c.giorno }} - {{ c.orario }})</option>
+                                {% endfor %}
                             </select>
                         </div>
                         <div class="col-md-4"><label>Data</label><input type="date" name="data_appuntamento" class="form-control" required></div>
