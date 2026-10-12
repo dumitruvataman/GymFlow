@@ -1,12 +1,25 @@
 def render_page(content, **context):
     from flask import render_template_string
+    from database import get_db
+    
+    # Recupera i dati aziendali dal database per la navbar
+    try:
+        conn = get_db()
+        company = conn.execute("SELECT * FROM company_info LIMIT 1").fetchone()
+        conn.close()
+        nome_palestra = company['nome_palestra'] if company else "GymFlow Admin"
+        logo_path = company['logo_path'] if company else "static/logo.png"
+    except Exception:
+        nome_palestra = "GymFlow Admin"
+        logo_path = "static/logo.png"
+
     full_template = f'''
     <!doctype html>
     <html lang="it">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>GymFlow Admin</title>
+        <title>{nome_palestra}</title>
         <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
     </head>
@@ -14,7 +27,10 @@ def render_page(content, **context):
         {{% if session.get('user_id') %}}
         <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
             <div class="container-fluid">
-                <a class="navbar-brand" href="/"><i class="bi bi-activity"></i> GymFlow Admin</a>
+                <a class="navbar-brand d-flex align-items-center" href="/">
+                    <img src="/{{logo_path}}" alt="Logo" width="35" height="35" class="d-inline-block align-text-top me-2 rounded-circle bg-white p-1" onerror="this.style.display='none'">
+                    <span>{nome_palestra}</span>
+                </a>
                 <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                     <span class="navbar-toggler-icon"></span>
                 </button>
@@ -27,6 +43,7 @@ def render_page(content, **context):
                         <li class="nav-item"><a class="nav-link" href="/rooms">Sale</a></li>
                         <li class="nav-item"><a class="nav-link" href="/clients">Clienti (App)</a></li>
                         {{% if session.get('role') in ['admin', 'superuser'] %}}
+                        <li class="nav-item"><a class="nav-link" href="/company-settings">Anagrafica Azienda</a></li>
                         <li class="nav-item"><a class="nav-link" href="/users">Utenti Sistema</a></li>
                         <li class="nav-item"><a class="nav-link" href="/logs">Registro Log</a></li>
                         {{% endif %}}
