@@ -15,7 +15,6 @@ def manage_courses():
         instructor_id = request.form['instructor_id']
         room_id = request.form['room_id']
         
-        # Gestione orario inizio e fine da menu a tendina separati (Ore e Minuti)
         h_inizio = request.form['h_inizio']
         m_inizio = request.form['m_inizio']
         h_fine = request.form['h_fine']
@@ -23,7 +22,7 @@ def manage_courses():
         orario_inizio = f"{h_inizio}:{m_inizio}"
         orario_fine = f"{h_fine}:{m_fine}"
         
-        selected_days = request.form.getlist('days') # Lista degli ID dei giorni spuntati
+        selected_days = request.form.getlist('days')
         
         cursor = conn.cursor()
         if DATABASE_URL:
@@ -44,6 +43,7 @@ def manage_courses():
         conn.commit()
         log_activity(session['username'], f"Creato nuovo corso con programmazione: {nome}")
         flash('Corso creato con successo.', 'success')
+        return redirect(url_for('courses_bp.manage_courses'))
         
     courses = conn.execute('''
         SELECT c.*, i.nome as i_nome, i.cognome as i_cognome, r.nome as r_nome 
@@ -57,22 +57,10 @@ def manage_courses():
     days = conn.execute('SELECT * FROM days ORDER BY ordine').fetchall()
     conn.close()
     
-    # Generazione opzioni ore (00 a 23) e minuti (00, 10, 20, 30, 40, 50)
     ore_options = [f"{i:02d}" for i in range(24)]
     minuti_options = ["00", "10", "20", "30", "40", "50"]
     
-    # Costruiamo le opzioni HTML via stringhe o direttamente nel template
-    ore_html = "".join([f'<option value="{o}">{o}</option>' for o in ore_options])
-    min_html = "".join([f'<option value="{m}">{m}</option>' for m in minuti_options])
-    
-    days_checkboxes = "".join([f'''
-        <div class="form-check form-check-inline">
-            <input class="form-check-input" type="checkbox" name="days" value="{d['id']}" id="day_{d['id']}">
-            <label class="form-check-label" for="day_{d['id']}">{d['nome']}</label>
-        </div>
-    ''' for d in days])
-
-    content = f"""
+    content = """
     <h2>Gestione Corsi, Orari e Sale</h2>
     <div class="card shadow-sm mb-4 p-4">
         <h5>Nuovo Corso con Programmazione Settimanale</h5>
@@ -82,35 +70,52 @@ def manage_courses():
             
             <div class="col-md-4"><label class="form-label">Istruttore</label>
                 <select name="instructor_id" class="form-select">
-                    {''.join([f'<option value="{i["id"]}">{i["nome"]} {i["cognome"]}</option>' for i in instructors])}
+                    {% for i in instructors %}
+                    <option value="{{ i.id }}">{{ i.nome }} {{ i.cognome }}</option>
+                    {% endfor %}
                 </select>
             </div>
             <div class="col-md-4"><label class="form-label">Sala</label>
                 <select name="room_id" class="form-select">
-                    {''.join([f'<option value="{r["id"]}">{r["nome"]}</option>' for r in rooms])}
+                    {% for r in rooms %}
+                    <option value="{{ r.id }}">{{ r.nome }}</option>
+                    {% endfor %}
                 </select>
             </div>
             
             <div class="col-md-6">
                 <label class="form-label d-block">Orario Inizio</label>
                 <div class="input-group">
-                    <select name="h_inizio" class="form-select">{ore_html}</select>
+                    <select name="h_inizio" class="form-select">
+                        {% for o in ore_options %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+                    </select>
                     <span class="input-group-text">:</span>
-                    <select name="m_inizio" class="form-select">{min_html}</select>
+                    <select name="m_inizio" class="form-select">
+                        {% for m in minuti_options %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+                    </select>
                 </div>
             </div>
             <div class="col-md-6">
                 <label class="form-label d-block">Orario Fine</label>
                 <div class="input-group">
-                    <select name="h_fine" class="form-select">{ore_html}</select>
+                    <select name="h_fine" class="form-select">
+                        {% for o in ore_options %}<option value="{{ o }}">{{ o }}</option>{% endfor %}
+                    </select>
                     <span class="input-group-text">:</span>
-                    <select name="m_fine" class="form-select">{min_html}</select>
+                    <select name="m_fine" class="form-select">
+                        {% for m in minuti_options %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+                    </select>
                 </div>
             </div>
             
             <div class="col-12">
                 <label class="form-label d-block fw-bold">Giorni della Settimana (Seleziona le spunte)</label>
-                {days_checkboxes}
+                {% for d in days %}
+                <div class="form-check form-check-inline">
+                    <input class="form-check-input" type="checkbox" name="days" value="{{ d.id }}" id="day_{{ d.id }}">
+                    <label class="form-check-label" for="day_{{ d.id }}">{{ d.nome }}</label>
+                </div>
+                {% endfor %}
             </div>
             
             <div class="col-12 mt-3"><button type="submit" class="btn btn-primary">Salva Corso e Programmazione</button></div>
@@ -128,4 +133,4 @@ def manage_courses():
         </table>
     </div>
     """
-    return render_page(content, courses=courses)
+    return render_page(content, courses=courses, instructors=instructors, rooms=rooms, days=days, ore_options=ore_options, minuti_options=minuti_options)
