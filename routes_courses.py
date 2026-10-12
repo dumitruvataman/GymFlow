@@ -6,71 +6,150 @@ courses_bp = Blueprint('courses_bp', __name__)
 
 @courses_bp.route('/courses', methods=['GET', 'POST'])
 def manage_courses():
-    if 'user_id' not in session: return redirect(url_for('auth_bp.login'))
+    if 'user_id' not in session:
+        return redirect(url_for('auth_bp.login'))
+        
     conn = get_db()
+    cursor = conn.cursor()
+    
     if request.method == 'POST':
+        nome = request.form['nome']
+        descrizione = request.form.get('descrizione', '')
+        instructor_id = request.form.get('instructor_id')
+        room_id = request.form.get('room_id')
+        orario_inizio = request.form.get('orario_inizio')
+        orario_fine = request.form.get('orario_fine')
+        giorni_selezionati = request.form.getlist('giorni') # Lista degli ID dei giorni selezionati via checkbox
+        
         if DATABASE_URL:
-            conn.cursor().execute('INSERT INTO courses (nome, descrizione, instructor_id, room_id, day_id, orario) VALUES (%s,%s,%s,%s,%s,%s)',
-                                  (request.form['nome'], request.form['descrizione'], request.form['instructor_id'], request.form['room_id'], request.form['day_id'], request.form['orario']))
+            cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id, orario_inizio, orario_fine)
+                              VALUES (%s, %s, %s, %s, %s, %s) RETURNING id''',
+                           (nome, descrizione, instructor_id or None, room_id or None, orario_inizio, orario_fine))
+            course_id = cursor.fetchone()['id']
         else:
-            conn.cursor().execute('INSERT INTO courses (nome, descrizione, instructor_id, room_id, day_id, orario) VALUES (?,?,?,?,?,?)',
-                                  (request.form['nome'], request.form['descrizione'], request.form['instructor_id'], request.form['room_id'], request.form['day_id'], request.form['orario']))
+            cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id, orario_inizio, orario_fine)
+                              VALUES (?, ?, ?, ?, ?, ?)''',
+                           (nome, descrizione, instructor_id or None, room_id or None, orario_inizio, orario_fine))
+            course_id = cursor.lastrowid
+            
+        # Inserisci le relazioni nella tabella course_days
+        for day_id in giorni_selezionati:
+            if DATABASE_URL:
+                cursor.execute('INSERT INTO course_days (course_id, day_id) VALUES (%s, %s)', (course_id, day_id))
+            else:
+                cursor.execute('INSERT INTO course_days (course_id, day_id) VALUES (?, ?)', (course_id, day_id))
+                
         conn.commit()
-        log_activity(session['username'], f"Creato nuovo corso: {request.form['nome']}")
-        flash('Corso creato.', 'success')
+        log_activity(session['username'], f"Creato nuovo corso: {nome}")
+        flash('Corso creato con successo!', 'success')
+        return redirect(url_for('courses_bp.manage_courses'))
+
+    # Recupera i corsi unendo la tabella course_days e days per ottenere i giorni concatenati
     courses = conn.execute('''
-        SELECT c.*, i.nome as i_nome, i.cognome as i_cognome, r.nome as r_nome, d.nome as giorno_nome 
+        SELECT c.*, i.nome as i_nome, i.cognome as i_cognome, r.nome as r_nome,
+               GROUP_CONCAT(d.nome, ', ') as giorni_str
         FROM courses c 
         LEFT JOIN instructors i ON c.instructor_id = i.id 
         LEFT JOIN rooms r ON c.room_id = r.id
-        LEFT JOIN days d ON c.day_id = d.id
+        LEFT JOIN course_days cd ON c.id = cd.course_id
+        LEFT JOIN days d ON cd.day_id = d.id
+        GROUP BY c.id
     ''').fetchall()
+    
     instructors = conn.execute('SELECT * FROM instructors').fetchall()
     rooms = conn.execute('SELECT * FROM rooms').fetchall()
     days = conn.execute('SELECT * FROM days ORDER BY ordine').fetchall()
     conn.close()
     
-    content = """
-    <h2>Gestione Corsi, Orari e Sale</h2>
-    <div class="card shadow-sm mb-4 p-3">
-        <h5>Nuovo Corso</h5>
+    # Costruzione della pagina con tabella e form di inserimento
+    days_checkboxes = "".join([f'<div class="form-check form-check-inline"><input class="form-check-input" type="checkbox" name="giorni" value="{d["id"]}" id="day_{d["id"]}"><label class="form-check-label" for="day_{d["id"]}">{d["nome"]}</label></div>' for d in days])
+    
+    instructors_options = "".join([f'<option value="{i["id"]}">{i["nome"]} {i["cognome"]}</option>' for i in instructors])
+    rooms_options = "".join([f'<option value="{r["id"]}">{r["nome"]}</option>' for r in rooms])
+    
+    courses_rows = ""
+    for c in courses:
+        courses_rows += f"""
+        <tr>
+            <td><strong>{c['nome']}</strong><br><small class="text-muted">{c['descrizione'] or ''}</small></td>
+            <td>{c['orario_inizio'] or ''} - {c['orario_fine'] or ''}</td>
+            <td><span class="badge bg-info text-dark">{c['giorni_str'] or 'Nessun giorno'}</span></td>
+            <td>{c['r_nome'] or 'N/D'}</td>
+            <td>{c['i_nome'] or ''} {c['i_cognome'] or ''}</td>
+        </tr>
+        """
+    if not courses:
+        courses_rows = '<tr><td colspan="5" class="text-center text-muted">Nessun corso programmato al momento.</td></tr>'
+
+    content = f"""
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2>Gestione Corsi e Orari</h2>
+            <p class="text-muted">Crea e gestisci i corsi della palestra con programmazione settimanale multipla.</p>
+        </div>
+    </div>
+    
+    <div class="card shadow-sm p-4 mb-4">
+        <h4 class="mb-3">Aggiungi Nuovo Corso</h4>
         <form method="POST" class="row g-3">
-            <div class="col-md-3"><label>Nome</label><input type="text" name="nome" class="form-control" required></div>
-            <div class="col-md-3"><label>Descrizione</label><input type="text" name="descrizione" class="form-control"></div>
-            <div class="col-md-3"><label>Istruttore</label>
-                <select name="instructor_id" class="form-select">
-                    {% for i in instructors %}
-                    <option value="{{ i.id }}">{{ i.nome }} {{ i.cognome }}</option>
-                    {% endfor %}
-                </select>
+            <div class="col-md-4">
+                <label class="form-label">Nome Corso</label>
+                <input type="text" name="nome" class="form-control" required>
             </div>
-            <div class="col-md-3"><label>Sala</label>
+            <div class="col-md-8">
+                <label class="form-label">Descrizione</label>
+                <input type="text" name="descrizione" class="form-control">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Orario Inizio</label>
+                <input type="time" name="orario_inizio" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Orario Fine</label>
+                <input type="time" name="orario_fine" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Sala</label>
                 <select name="room_id" class="form-select">
-                    {% for r in rooms %}
-                    <option value="{{ r.id }}">{{ r.nome }}</option>
-                    {% endfor %}
+                    <option value="">Seleziona Sala...</option>
+                    {rooms_options}
                 </select>
             </div>
-            <div class="col-md-3"><label>Giorno</label>
-                <select name="day_id" class="form-select">
-                    {% for d in days %}
-                    <option value="{{ d.id }}">{{ d.nome }}</option>
-                    {% endfor %}
+            <div class="col-md-3">
+                <label class="form-label">Istruttore</label>
+                <select name="instructor_id" class="form-select">
+                    <option value="">Seleziona Istruttore...</option>
+                    {instructors_options}
                 </select>
             </div>
-            <div class="col-md-3"><label>Orario (es. 10:00 - 11:00)</label><input type="text" name="orario" class="form-control" required></div>
-            <div class="col-md-6 d-flex align-items-end"><button type="submit" class="btn btn-primary w-100">Salva e Associa</button></div>
+            <div class="col-12">
+                <label class="form-label d-block">Giorni della Settimana</label>
+                {days_checkboxes}
+            </div>
+            <div class="col-12">
+                <button type="submit" class="btn btn-primary"><i class="bi bi-plus-circle"></i> Salva Corso</button>
+            </div>
         </form>
     </div>
-    <div class="table-responsive">
-        <table class="table table-striped bg-white shadow-sm">
-            <thead><tr><th>Corso</th><th>Giorno e Orario</th><th>Sala</th><th>Istruttore</th></tr></thead>
-            <tbody>
-                {% for c in courses %}
-                <tr><td><strong>{{ c.nome }}</strong><br><small>{{ c.descrizione }}</small></td><td>{{ c.giorno_nome }} - {{ c.orario }}</td><td>{{ c.r_nome }}</td><td>{{ c.i_nome }} {{ c.i_cognome }}</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
+
+    <div class="card shadow-sm p-4">
+        <h4 class="mb-3">Elenco Corsi Attivi</h4>
+        <div class="table-responsive">
+            <table class="table table-striped align-middle">
+                <thead>
+                    <tr>
+                        <th>Corso</th>
+                        <th>Orario</th>
+                        <th>Giorni</th>
+                        <th>Sala</th>
+                        <th>Istruttore</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {courses_rows}
+                </tbody>
+            </table>
+        </div>
     </div>
     """
-    return render_page(content, courses=courses, instructors=instructors, rooms=rooms, days=days)
+    return render_page(content, courses=courses)
