@@ -11,7 +11,6 @@ def index():
         
     conn = get_db()
     
-    # Recupera i corsi con le informazioni associate, unendo la tabella di giunzione course_days e days
     courses = conn.execute('''
         SELECT c.*, i.nome as i_nome, i.cognome as i_cognome, r.nome as r_nome,
                GROUP_CONCAT(d.nome, ', ') as giorni_str
@@ -25,10 +24,12 @@ def index():
     
     conn.close()
     
+    username = session.get('username', 'Utente')
+    
     content = f"""
     <div class="row mb-4">
         <div class="col-12">
-            <h2>Benvenuto, {session.get('username', 'Utente')}!</h2>
+            <h2>Benvenuto, {username}!</h2>
             <p class="text-muted">Panoramica generale della gestione corsi e programmazione settimanale.</p>
         </div>
     </div>
@@ -49,7 +50,7 @@ def index():
                             </tr>
                         </thead>
                         <tbody>
-                            {% for c in courses %}
+                            """ + "{% for c in courses %}" + """
                             <tr>
                                 <td><strong>{{ c.nome }}</strong><br><small class="text-muted">{{ c.descrizione }}</small></td>
                                 <td>{{ c.orario_inizio }} - {{ c.orario_fine }}</td>
@@ -57,11 +58,11 @@ def index():
                                 <td>{{ c.r_nome or 'N/D' }}</td>
                                 <td>{{ c.i_nome or '' }} {{ c.i_cognome or '' }}</td>
                             </tr>
-                            {% else %}
+                            """ + "{% else %}" + """
                             <tr>
                                 <td colspan="5" class="text-center text-muted">Nessun corso programmato al momento.</td>
                             </tr>
-                            {% endfor %}
+                            """ + "{% endfor %}" + """
                         </tbody>
                     </table>
                 </div>
