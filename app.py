@@ -47,7 +47,6 @@ def init_db():
         cursor.execute('''CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY AUTOINCREMENT, pin_code TEXT NOT NULL, nome TEXT NOT NULL, cognome TEXT NOT NULL, email TEXT UNIQUE NOT NULL, cellulare TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS bookings (id INTEGER PRIMARY KEY AUTOINCREMENT, client_id INTEGER, course_id INTEGER, data_appuntamento TEXT, stato TEXT DEFAULT 'Confermato', FOREIGN KEY(client_id) REFERENCES clients(id), FOREIGN KEY(course_id) REFERENCES courses(id))''')
 
-    # Inserimento dati essenziali se le tabelle sono vuote
     cursor.execute("SELECT COUNT(*) FROM roles")
     res = cursor.fetchone()
     count_roles = res['count'] if DATABASE_URL else res[0]
@@ -89,79 +88,80 @@ def init_db():
 
 init_db()
 
-# --- LAYOUT ADMIN ---
-LAYOUT_ADMIN = '''
-<!doctype html>
-<html lang="it">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>GymFlow Admin</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-</head>
-<body class="bg-light">
-    {% if session.get('user_id') %}
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="/"><i class="bi bi-activity"></i> GymFlow Admin</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav me-auto">
-                    <li class="nav-item"><a class="nav-link" href="/">Calendario & Prenotazioni</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/courses">Corsi</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/instructors">Istruttori</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/rooms">Sale</a></li>
-                    <li class="nav-item"><a class="nav-link" href="/clients">Clienti (App)</a></li>
-                    {% if session.get('role') in ['admin', 'superuser'] %}
-                    <li class="nav-item"><a class="nav-link" href="/users">Utenti Sistema</a></li>
-                    {% endif %}
-                </ul>
-                <span class="navbar-text text-white me-3 d-none d-lg-inline">
-                    {{ session.get('username') }} ({{ session.get('role') }})
-                </span>
-                <a href="/logout" class="btn btn-outline-light btn-sm">Esci</a>
+def render_page(content, **context):
+    full_template = f'''
+    <!doctype html>
+    <html lang="it">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>GymFlow Admin</title>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    </head>
+    <body class="bg-light">
+        {{% if session.get('user_id') %}}
+        <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+            <div class="container-fluid">
+                <a class="navbar-brand" href="/"><i class="bi bi-activity"></i> GymFlow Admin</a>
+                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarNav">
+                    <ul class="navbar-nav me-auto">
+                        <li class="nav-item"><a class="nav-link" href="/">Calendario & Prenotazioni</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/courses">Corsi</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/instructors">Istruttori</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/rooms">Sale</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/clients">Clienti (App)</a></li>
+                        {{% if session.get('role') in ['admin', 'superuser'] %}}
+                        <li class="nav-item"><a class="nav-link" href="/users">Utenti Sistema</a></li>
+                        {{% endif %}}
+                    </ul>
+                    <span class="navbar-text text-white me-3 d-none d-lg-inline">
+                        {{{{ session.get('username') }}}} ({{{{ session.get('role') }}}})
+                    </span>
+                    <a href="/logout" class="btn btn-outline-light btn-sm">Esci</a>
+                </div>
             </div>
+        </nav>
+        {{% endif %}}
+
+        <div class="container">
+            {{% with messages = get_flashed_messages(with_categories=true) %}}
+                {{% if messages %}}
+                    {{% for category, message in messages %}}
+                        <div class="alert alert-{{{{ 'danger' if category == 'error' else 'success' }}}} alert-dismissible fade show" role="alert">
+                            {{{{ message }}}}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    {{% endfor %}}
+                {{% endif %}}
+            {{% endwith %}}
+
+            {content}
         </div>
-    </nav>
-    {% endif %}
 
-    <div class="container">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ 'danger' if category == 'error' else 'success' }} alert-dismissible fade show" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
-
-        {{ body|safe }}
-    </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        function togglePassword(fieldId, btnId) {
-            const input = document.getElementById(fieldId);
-            const icon = document.getElementById(btnId);
-            if (input.type === "password") {
-                input.type = "text";
-                icon.classList.remove("bi-eye");
-                icon.classList.add("bi-eye-slash");
-            } else {
-                input.type = "password";
-                icon.classList.remove("bi-eye-slash");
-                icon.classList.add("bi-eye");
-            }
-        }
-    </script>
-</body>
-</html>
-'''
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+        <script>
+            function togglePassword(fieldId, btnId) {{
+                const input = document.getElementById(fieldId);
+                const icon = document.getElementById(btnId);
+                if (input.type === "password") {{
+                    input.type = "text";
+                    icon.classList.remove("bi-eye");
+                    icon.classList.add("bi-eye-slash");
+                }} else {{
+                    input.type = "password";
+                    icon.classList.remove("bi-eye-slash");
+                    icon.classList.add("bi-eye");
+                }}
+            }}
+        </script>
+    </body>
+    </html>
+    '''
+    return render_template_string(full_template, **context)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -206,7 +206,7 @@ def login():
         </div>
     </div>
     '''
-    return render_template_string(LAYOUT_ADMIN, body=content)
+    return render_page(content)
 
 @app.route('/logout')
 def logout():
@@ -307,7 +307,7 @@ def index():
         </table>
     </div>
     """
-    return render_template_string(LAYOUT_ADMIN, body=content, days=days, courses=courses, clients=clients, bookings=bookings)
+    return render_page(content, days=days, courses=courses, clients=clients, bookings=bookings)
 
 @app.route('/book', methods=['POST'])
 def add_booking():
@@ -434,7 +434,7 @@ def manage_users():
         </table>
     </div>
     """
-    return render_template_string(LAYOUT_ADMIN, body=content, users=users, roles=roles)
+    return render_page(content, users=users, roles=roles)
 
 @app.route('/instructors', methods=['GET', 'POST'])
 def manage_instructors():
@@ -476,7 +476,7 @@ def manage_instructors():
         </table>
     </div>
     """
-    return render_template_string(LAYOUT_ADMIN, body=content, instructors=instructors)
+    return render_page(content, instructors=instructors)
 
 @app.route('/rooms', methods=['GET', 'POST'])
 def manage_rooms():
@@ -507,7 +507,7 @@ def manage_rooms():
         <tbody>{% for r in rooms %}<tr><td>{{ r.nome }}</td><td>{{ r.capienza }} persone</td></tr>{% endfor %}</tbody>
     </table>
     """
-    return render_template_string(LAYOUT_ADMIN, body=content, rooms=rooms)
+    return render_page(content, rooms=rooms)
 
 @app.route('/courses', methods=['GET', 'POST'])
 def manage_courses():
@@ -577,7 +577,7 @@ def manage_courses():
         </table>
     </div>
     """
-    return render_template_string(LAYOUT_ADMIN, body=content, courses=courses, instructors=instructors, rooms=rooms, days=days)
+    return render_page(content, courses=courses, instructors=instructors, rooms=rooms, days=days)
 
 @app.route('/clients', methods=['GET', 'POST'])
 def manage_clients():
@@ -622,12 +622,9 @@ def manage_clients():
         </table>
     </div>
     """
-    return render_template_string(LAYOUT_ADMIN, body=content, clients=clients)
+    return render_page(content, clients=clients)
 
-
-# ==========================================================
-# --- AREA RISERVATA CLIENTE (WEB APP MOBILE / RESPONSIVE) ---
-# ==========================================================
+# --- AREA CLIENTE MOBILE ---
 
 @app.route('/client/login', methods=['GET', 'POST'])
 def client_login():
@@ -747,7 +744,6 @@ def client_dashboard():
             {% if messages %}{% for cat, msg in messages %}<div class="alert alert-{{ 'danger' if cat=='error' else 'success' }}">{{ msg }}</div>{% endfor %}{% endif %}
         {% endwith %}
 
-        <!-- Anagrafica -->
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-white"><h5><i class="bi bi-person-badge"></i> I miei dati</h5></div>
             <div class="card-body">
@@ -764,7 +760,6 @@ def client_dashboard():
             </div>
         </div>
 
-        <!-- Prenotazione Corso -->
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-white"><h5><i class="bi bi-calendar-plus"></i> Richiedi Appuntamento / Corso</h5></div>
             <div class="card-body">
@@ -786,7 +781,6 @@ def client_dashboard():
             </div>
         </div>
 
-        <!-- Storico e Appuntamenti -->
         <div class="card shadow-sm mb-4">
             <div class="card-header bg-white"><h5><i class="bi bi-clock-history"></i> I miei Appuntamenti e Storico</h5></div>
             <div class="card-body">
@@ -822,7 +816,6 @@ def client_dashboard():
 def client_logout():
     session.pop('client_id', None)
     return redirect(url_for('client_login'))
-
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
