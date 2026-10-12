@@ -69,9 +69,11 @@ def init_db():
             CREATE TABLE IF NOT EXISTS days (id SERIAL PRIMARY KEY, nome TEXT UNIQUE NOT NULL, ordine INTEGER);
             CREATE TABLE IF NOT EXISTS instructors (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, cognome TEXT NOT NULL, email TEXT, cellulare TEXT, specialita TEXT);
             CREATE TABLE IF NOT EXISTS rooms (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, capienza INTEGER);
-            CREATE TABLE IF NOT EXISTS courses (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, descrizione TEXT, instructor_id INTEGER REFERENCES instructors(id), room_id INTEGER REFERENCES rooms(id), day_id INTEGER REFERENCES days(id), orario TEXT);
+            CREATE TABLE IF NOT EXISTS courses (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, descrizione TEXT, instructor_id INTEGER REFERENCES instructors(id), room_id INTEGER REFERENCES rooms(id), orario_inizio TEXT, orario_fine TEXT);
+            CREATE TABLE IF NOT EXISTS course_days (id SERIAL PRIMARY KEY, course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE, day_id INTEGER REFERENCES days(id));
             CREATE TABLE IF NOT EXISTS clients (id SERIAL PRIMARY KEY, pin_code TEXT NOT NULL, nome TEXT NOT NULL, cognome TEXT NOT NULL, email TEXT UNIQUE NOT NULL, cellulare TEXT);
-            CREATE TABLE IF NOT EXISTS bookings (id SERIAL PRIMARY KEY, client_id INTEGER REFERENCES clients(id), course_id INTEGER REFERENCES courses(id), data_appuntamento TEXT, stato TEXT DEFAULT 'Confermato');
+            CREATE TABLE IF NOT EXISTS lesson_instances (id SERIAL PRIMARY KEY, course_id INTEGER REFERENCES courses(id), data_lezione TEXT NOT NULL);
+            CREATE TABLE IF NOT EXISTS bookings (id SERIAL PRIMARY KEY, client_id INTEGER REFERENCES clients(id), course_id INTEGER REFERENCES courses(id), lesson_id INTEGER REFERENCES lesson_instances(id), data_appuntamento TEXT, stato TEXT DEFAULT 'Confermato', presenza TEXT DEFAULT 'In attesa');
             CREATE TABLE IF NOT EXISTS system_logs (id SERIAL PRIMARY KEY, timestamp TEXT, username TEXT, action TEXT);
         ''')
     else:
@@ -80,10 +82,11 @@ def init_db():
         cursor.execute('''CREATE TABLE IF NOT EXISTS days (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT UNIQUE NOT NULL, ordine INTEGER)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS instructors (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL, cognome TEXT NOT NULL, email TEXT, cellulare TEXT, specialita TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS rooms (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL, capienza INTEGER)''')
-        cursor.execute('''CREATE TABLE IF NOT EXISTS courses (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL, descrizione TEXT, instructor_id INTEGER, room_id INTEGER, day_id INTEGER, orario TEXT, FOREIGN KEY(instructor_id) REFERENCES instructors(id), FOREIGN KEY(room_id) REFERENCES rooms(id), FOREIGN KEY(day_id) REFERENCES days(id))''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS courses (id INTEGER PRIMARY KEY AUTOINCREMENT, nome TEXT NOT NULL, descrizione TEXT, instructor_id INTEGER, room_id INTEGER, orario_inizio TEXT, orario_fine TEXT, FOREIGN KEY(instructor_id) REFERENCES instructors(id), FOREIGN KEY(room_id) REFERENCES rooms(id))''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS course_days (id INTEGER PRIMARY KEY AUTOINCREMENT, course_id INTEGER, day_id INTEGER, FOREIGN KEY(course_id) REFERENCES courses(id) ON DELETE CASCADE, FOREIGN KEY(day_id) REFERENCES days(id))''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY AUTOINCREMENT, pin_code TEXT NOT NULL, nome TEXT NOT NULL, cognome TEXT NOT NULL, email TEXT UNIQUE NOT NULL, cellulare TEXT)''')
-        cursor.execute('''CREATE TABLE IF NOT EXISTS bookings (id INTEGER PRIMARY KEY AUTOINCREMENT, client_id INTEGER, course_id INTEGER, data_appuntamento TEXT, stato TEXT DEFAULT 'Confermato', FOREIGN KEY(client_id) REFERENCES clients(id), FOREIGN KEY(course_id) REFERENCES courses(id))''')
-        cursor.execute('''CREATE TABLE IF NOT EXISTS system_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, username TEXT, action TEXT)''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS lesson_instances (id INTEGER PRIMARY KEY AUTOINCREMENT, course_id INTEGER, data_lezione TEXT NOT NULL, FOREIGN KEY(course_id) REFERENCES courses(id))''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS bookings (id INTEGER PRIMARY KEY AUTOINCREMENT, client_id INTEGER, course_id INTEGER, lesson_id INTEGER, data_appuntamento TEXT, stato TEXT DEFAULT 'Confermato', presenza TEXT DEFAULT 'In attesa', FOREIGN KEY(client_id) REFERENCES clients(id), FOREIGN KEY(course_id) REFERENCES courses(id), FOREIGN KEY(lesson_id) REFERENCES lesson_instances(id))''')
 
     cursor.execute("SELECT COUNT(*) FROM roles")
     res = cursor.fetchone()
