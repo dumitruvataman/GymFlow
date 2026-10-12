@@ -27,6 +27,12 @@ def init_db():
     cursor = conn.cursor()
     
     if DATABASE_URL:
+        cursor.execute('''CREATE TABLE IF NOT EXISTS sys_users (
+                            id SERIAL PRIMARY KEY,
+                            username TEXT UNIQUE,
+                            password TEXT,
+                            role TEXT
+                          )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS company_info (
                             id SERIAL PRIMARY KEY,
                             nome_palestra TEXT,
@@ -66,6 +72,12 @@ def init_db():
                             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                           )''')
     else:
+        cursor.execute('''CREATE TABLE IF NOT EXISTS sys_users (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            username TEXT UNIQUE,
+                            password TEXT,
+                            role TEXT
+                          )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS company_info (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             nome_palestra TEXT,
@@ -105,6 +117,12 @@ def init_db():
                             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                           )''')
         
+        # Inserisci un utente admin di default se la tabella sys_users è vuota
+        cursor.execute('SELECT COUNT(*) as cnt FROM sys_users')
+        if cursor.fetchone()['cnt'] == 0:
+            # Nota: assicurati che la password corrisponda al formato gestito da routes_auth.py (es. in chiaro o hash)
+            cursor.execute('INSERT INTO sys_users (username, password, role) VALUES (?, ?, ?)', ('admin', 'admin', 'admin'))
+
         cursor.execute('SELECT COUNT(*) as cnt FROM days')
         if cursor.fetchone()['cnt'] == 0:
             default_days = [
