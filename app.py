@@ -8,6 +8,7 @@ from routes_courses import courses_bp
 from routes_app_clients import app_clients_bp
 from routes_client import client_bp
 from routes_history_calendar import history_calendar_bp
+from routes_company import company_bp
 
 app = Flask(__name__)
 app.secret_key = 'chiave_segreta_gymflow_super_sicura_v4'
@@ -21,6 +22,7 @@ app.register_blueprint(courses_bp)
 app.register_blueprint(app_clients_bp)
 app.register_blueprint(client_bp)
 app.register_blueprint(history_calendar_bp)
+app.register_blueprint(company_bp)
 
 @app.route('/')
 def root_redirect():
