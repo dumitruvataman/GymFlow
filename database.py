@@ -1,5 +1,6 @@
 import sqlite3
 import os
+from werkzeug.security import generate_password_hash
 
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
@@ -17,6 +18,8 @@ def get_db():
 def check_db_ready():
     try:
         conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1 FROM sys_users LIMIT 1")
         conn.close()
         return True
     except Exception:
@@ -35,7 +38,11 @@ def init_db():
                             id SERIAL PRIMARY KEY,
                             username TEXT UNIQUE,
                             password TEXT,
-                            role_id INTEGER
+                            role_id INTEGER,
+                            nome TEXT,
+                            cognome TEXT,
+                            email TEXT,
+                            cellulare TEXT
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS company_info (
                             id SERIAL PRIMARY KEY,
@@ -84,7 +91,11 @@ def init_db():
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             username TEXT UNIQUE,
                             password TEXT,
-                            role_id INTEGER
+                            role_id INTEGER,
+                            nome TEXT,
+                            cognome TEXT,
+                            email TEXT,
+                            cellulare TEXT
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS company_info (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -129,6 +140,17 @@ def init_db():
         cursor.execute('SELECT COUNT(*) as cnt FROM roles')
         if cursor.fetchone()['cnt'] == 0:
             cursor.executemany('INSERT INTO roles (name) VALUES (?)', [('admin',), ('superuser',), ('staff',)])
+
+        # Inserisci utente admin di default con password 'admin' (hashing sicuro)
+        cursor.execute('SELECT COUNT(*) as cnt FROM sys_users WHERE username = ?', ('admin',))
+        if cursor.fetchone()['cnt'] == 0:
+            hashed_pw = generate_password_hash('admin')
+            if DATABASE_URL:
+                cursor.execute('INSERT INTO sys_users (username, password, role_id, nome, cognome) VALUES (%s, %s, %s, %s, %s)', 
+                               ('admin', hashed_pw, 1, 'Amministratore', 'Sistema'))
+            else:
+                cursor.execute('INSERT INTO sys_users (username, password, role_id, nome, cognome) VALUES (?, ?, ?, ?, ?)', 
+                               ('admin', hashed_pw, 1, 'Amministratore', 'Sistema'))
 
         # Inserisci giorni di default se vuoti
         cursor.execute('SELECT COUNT(*) as cnt FROM days')
