@@ -14,6 +14,14 @@ def get_db():
         conn.row_factory = sqlite3.Row
         return conn
 
+def check_db_ready():
+    try:
+        conn = get_db()
+        conn.close()
+        return True
+    except Exception:
+        return False
+
 def init_db():
     conn = get_db()
     cursor = conn.cursor()
@@ -97,7 +105,6 @@ def init_db():
                             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                           )''')
         
-        # Inserimento dati predefiniti giorni se vuoti
         cursor.execute('SELECT COUNT(*) as cnt FROM days')
         if cursor.fetchone()['cnt'] == 0:
             default_days = [
@@ -106,7 +113,6 @@ def init_db():
             ]
             cursor.executemany('INSERT INTO days (nome, ordine) VALUES (?, ?)', default_days)
             
-        # Inserimento record di default per l'anagrafica aziendale se vuoto
         cursor.execute('SELECT COUNT(*) as cnt FROM company_info')
         if cursor.fetchone()['cnt'] == 0:
             cursor.execute('INSERT INTO company_info (nome_palestra, logo_path) VALUES (?, ?)', ('GymFlow Palestra', 'static/logo.png'))
