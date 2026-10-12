@@ -76,6 +76,20 @@ def init_db():
                             id SERIAL PRIMARY KEY,
                             nome TEXT
                           )''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS clients (
+                            id SERIAL PRIMARY KEY,
+                            nome TEXT,
+                            cognome TEXT,
+                            email TEXT,
+                            telefono TEXT,
+                            data_iscrizione TEXT
+                          )''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS lesson_instances (
+                            id SERIAL PRIMARY KEY,
+                            course_id INTEGER,
+                            data_lezione TEXT,
+                            stato TEXT
+                          )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS activity_logs (
                             id SERIAL PRIMARY KEY,
                             username TEXT,
@@ -129,6 +143,20 @@ def init_db():
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             nome TEXT
                           )''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS clients (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            nome TEXT,
+                            cognome TEXT,
+                            email TEXT,
+                            telefono TEXT,
+                            data_iscrizione TEXT
+                          )''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS lesson_instances (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            course_id INTEGER,
+                            data_lezione TEXT,
+                            stato TEXT
+                          )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS activity_logs (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             username TEXT,
@@ -141,16 +169,12 @@ def init_db():
         if cursor.fetchone()['cnt'] == 0:
             cursor.executemany('INSERT INTO roles (name) VALUES (?)', [('admin',), ('superuser',), ('staff',)])
 
-        # Inserisci utente admin di default con password 'admin' (hashing sicuro)
+        # Inserisci utente admin di default se non esiste
         cursor.execute('SELECT COUNT(*) as cnt FROM sys_users WHERE username = ?', ('admin',))
         if cursor.fetchone()['cnt'] == 0:
             hashed_pw = generate_password_hash('admin')
-            if DATABASE_URL:
-                cursor.execute('INSERT INTO sys_users (username, password, role_id, nome, cognome) VALUES (%s, %s, %s, %s, %s)', 
-                               ('admin', hashed_pw, 1, 'Amministratore', 'Sistema'))
-            else:
-                cursor.execute('INSERT INTO sys_users (username, password, role_id, nome, cognome) VALUES (?, ?, ?, ?, ?)', 
-                               ('admin', hashed_pw, 1, 'Amministratore', 'Sistema'))
+            cursor.execute('INSERT INTO sys_users (username, password, role_id, nome, cognome) VALUES (?, ?, ?, ?, ?)', 
+                           ('admin', hashed_pw, 1, 'Amministratore', 'Sistema'))
 
         # Inserisci giorni di default se vuoti
         cursor.execute('SELECT COUNT(*) as cnt FROM days')
