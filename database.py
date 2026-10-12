@@ -75,6 +75,7 @@ def init_db():
             CREATE TABLE IF NOT EXISTS lesson_instances (id SERIAL PRIMARY KEY, course_id INTEGER REFERENCES courses(id), data_lezione TEXT NOT NULL);
             CREATE TABLE IF NOT EXISTS bookings (id SERIAL PRIMARY KEY, client_id INTEGER REFERENCES clients(id), course_id INTEGER REFERENCES courses(id), lesson_id INTEGER REFERENCES lesson_instances(id), data_appuntamento TEXT, stato TEXT DEFAULT 'Confermato', presenza TEXT DEFAULT 'In attesa');
             CREATE TABLE IF NOT EXISTS system_logs (id SERIAL PRIMARY KEY, timestamp TEXT, username TEXT, action TEXT);
+            CREATE TABLE IF NOT EXISTS company_info (id SERIAL PRIMARY KEY, nome_palestra TEXT NOT NULL, logo_path TEXT NOT NULL);
         ''')
     else:
         cursor.execute('''CREATE TABLE IF NOT EXISTS roles (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL, description TEXT)''')
@@ -87,11 +88,13 @@ def init_db():
         cursor.execute('''CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY AUTOINCREMENT, pin_code TEXT NOT NULL, nome TEXT NOT NULL, cognome TEXT NOT NULL, email TEXT UNIQUE NOT NULL, cellulare TEXT)''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS lesson_instances (id INTEGER PRIMARY KEY AUTOINCREMENT, course_id INTEGER, data_lezione TEXT NOT NULL, FOREIGN KEY(course_id) REFERENCES courses(id))''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS bookings (id INTEGER PRIMARY KEY AUTOINCREMENT, client_id INTEGER, course_id INTEGER, lesson_id INTEGER, data_appuntamento TEXT, stato TEXT DEFAULT 'Confermato', presenza TEXT DEFAULT 'In attesa', FOREIGN KEY(client_id) REFERENCES clients(id), FOREIGN KEY(course_id) REFERENCES courses(id), FOREIGN KEY(lesson_id) REFERENCES lesson_instances(id))''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS system_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT, username TEXT, action TEXT)''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS company_info (id INTEGER PRIMARY KEY AUTOINCREMENT, nome_palestra TEXT NOT NULL, logo_path TEXT NOT NULL)''')
 
+    # Popolamento iniziale ruoli
     cursor.execute("SELECT COUNT(*) FROM roles")
     res = cursor.fetchone()
     count_roles = res['count'] if DATABASE_URL else res[0]
-    
     if count_roles == 0:
         roles_data = [('admin', 'Amministratore totale'), ('superuser', 'Gestione utenti pari o inferiori'), ('user', 'Accesso base')]
         if DATABASE_URL:
@@ -99,10 +102,10 @@ def init_db():
         else:
             cursor.executemany("INSERT INTO roles (name, description) VALUES (?, ?)", roles_data)
             
+    # Popolamento giorni base
     cursor.execute("SELECT COUNT(*) FROM days")
     res_d = cursor.fetchone()
     count_days = res_d['count'] if DATABASE_URL else res_d[0]
-    
     if count_days == 0:
         giorni_base = [('Lunedì', 1), ('Martedì', 2), ('Mercoledì', 3), ('Giovedì', 4), ('Venerdì', 5), ('Sabato', 6), ('Domenica', 7)]
         if DATABASE_URL:
@@ -110,6 +113,17 @@ def init_db():
         else:
             cursor.executemany("INSERT INTO days (nome, ordine) VALUES (?, ?)", giorni_base)
 
+    # Popolamento anagrafica azienda predefinita se vuota
+    cursor.execute("SELECT COUNT(*) FROM company_info")
+    res_c = cursor.fetchone()
+    count_c = res_c['count'] if DATABASE_URL else res_c[0]
+    if count_c == 0:
+        if DATABASE_URL:
+            cursor.execute("INSERT INTO company_info (nome_palestra, logo_path) VALUES (%s, %s)", ('GymFlow Fitness Club', 'static/logo.png'))
+        else:
+            cursor.execute("INSERT INTO company_info (nome_palestra, logo_path) VALUES (?, ?)", ('GymFlow Fitness Club', 'static/logo.png'))
+
+    # Creazione utente admin iniziale
     cursor.execute("SELECT * FROM sys_users WHERE username = 'admin'")
     if not cursor.fetchone():
         from werkzeug.security import generate_password_hash
