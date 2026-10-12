@@ -90,6 +90,12 @@ def init_db():
                             data_lezione TEXT,
                             stato TEXT
                           )''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS bookings (
+                            id SERIAL PRIMARY KEY,
+                            lesson_id INTEGER,
+                            client_id INTEGER,
+                            status TEXT
+                          )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS activity_logs (
                             id SERIAL PRIMARY KEY,
                             username TEXT,
@@ -156,6 +162,12 @@ def init_db():
                             course_id INTEGER,
                             data_lezione TEXT,
                             stato TEXT
+                          )''')
+        cursor.execute('''CREATE TABLE IF NOT EXISTS bookings (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            lesson_id INTEGER,
+                            client_id INTEGER,
+                            status TEXT
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS activity_logs (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
