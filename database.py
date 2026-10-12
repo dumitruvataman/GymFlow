@@ -27,11 +27,15 @@ def init_db():
     cursor = conn.cursor()
     
     if DATABASE_URL:
+        cursor.execute('''CREATE TABLE IF NOT EXISTS roles (
+                            id SERIAL PRIMARY KEY,
+                            name TEXT UNIQUE
+                          )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS sys_users (
                             id SERIAL PRIMARY KEY,
                             username TEXT UNIQUE,
                             password TEXT,
-                            role TEXT
+                            role_id INTEGER
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS company_info (
                             id SERIAL PRIMARY KEY,
@@ -72,11 +76,15 @@ def init_db():
                             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                           )''')
     else:
+        cursor.execute('''CREATE TABLE IF NOT EXISTS roles (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            name TEXT UNIQUE
+                          )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS sys_users (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             username TEXT UNIQUE,
                             password TEXT,
-                            role TEXT
+                            role_id INTEGER
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS company_info (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -117,12 +125,12 @@ def init_db():
                             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                           )''')
         
-        # Inserisci un utente admin di default se la tabella sys_users è vuota
-        cursor.execute('SELECT COUNT(*) as cnt FROM sys_users')
+        # Inserisci ruoli di default se vuoti
+        cursor.execute('SELECT COUNT(*) as cnt FROM roles')
         if cursor.fetchone()['cnt'] == 0:
-            # Nota: assicurati che la password corrisponda al formato gestito da routes_auth.py (es. in chiaro o hash)
-            cursor.execute('INSERT INTO sys_users (username, password, role) VALUES (?, ?, ?)', ('admin', 'admin', 'admin'))
+            cursor.executemany('INSERT INTO roles (name) VALUES (?)', [('admin',), ('superuser',), ('staff',)])
 
+        # Inserisci giorni di default se vuoti
         cursor.execute('SELECT COUNT(*) as cnt FROM days')
         if cursor.fetchone()['cnt'] == 0:
             default_days = [
@@ -131,6 +139,7 @@ def init_db():
             ]
             cursor.executemany('INSERT INTO days (nome, ordine) VALUES (?, ?)', default_days)
             
+        # Inserisci azienda di default se vuota
         cursor.execute('SELECT COUNT(*) as cnt FROM company_info')
         if cursor.fetchone()['cnt'] == 0:
             cursor.execute('INSERT INTO company_info (nome_palestra, logo_path) VALUES (?, ?)', ('GymFlow Palestra', 'static/logo.png'))
