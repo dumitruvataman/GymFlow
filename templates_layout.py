@@ -21,6 +21,7 @@ def render_page(content, **context):
                 <div class="collapse navbar-collapse" id="navbarNav">
                     <ul class="navbar-nav me-auto">
                         <li class="nav-item"><a class="nav-link" href="/">Calendario & Prenotazioni</a></li>
+                        <li class="nav-item"><a class="nav-link" href="/history-calendar">Calendario Storico</a></li>
                         <li class="nav-item"><a class="nav-link" href="/courses">Corsi</a></li>
                         <li class="nav-item"><a class="nav-link" href="/instructors">Istruttori</a></li>
                         <li class="nav-item"><a class="nav-link" href="/rooms">Sale</a></li>
