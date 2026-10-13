@@ -6,25 +6,41 @@ app_clients_bp = Blueprint('app_clients_bp', __name__)
 
 @app_clients_bp.route('/clients', methods=['GET', 'POST'])
 def manage_clients():
-    if 'user_id' not in session: return redirect(url_for('auth_bp.login'))
+    if 'user_id' not in session: 
+        return redirect(url_for('auth_bp.login'))
+        
     conn = get_db()
+    cursor = conn.cursor()
+    
     if request.method == 'POST':
+        nome = request.form.get('nome')
+        cognome = request.form.get('cognome')
+        email = request.form.get('email')
+        cellulare = request.form.get('cellulare', '')
+        pin_code = request.form.get('pin_code')
+        
         try:
             if DATABASE_URL:
-                conn.cursor().execute('INSERT INTO clients (nome, cognome, email, cellulare, pin_code) VALUES (%s,%s,%s,%s,%s)',
-                                      (request.form['nome'], request.form['cognome'], request.form['email'], request.form['cellulare'], request.form['pin_code']))
+                cursor.execute('INSERT INTO clients (nome, cognome, email, cellulare, pin_code) VALUES (%s,%s,%s,%s,%s)',
+                               (nome, cognome, email, cellulare, pin_code))
             else:
-                conn.cursor().execute('INSERT INTO clients (nome, cognome, email, cellulare, pin_code) VALUES (?,?,?,?,?)',
-                                      (request.form['nome'], request.form['cognome'], request.form['email'], request.form['cellulare'], request.form['pin_code']))
+                cursor.execute('INSERT INTO clients (nome, cognome, email, cellulare, pin_code) VALUES (?,?,?,?,?)',
+                               (nome, cognome, email, cellulare, pin_code))
             conn.commit()
-            log_activity(session['username'], f"Registrato nuovo cliente App: {request.form['nome']} {request.form['cognome']}")
-            flash('Cliente registrato.', 'success')
-        except Exception:
-            flash('Email già registrata.', 'error')
+            log_activity(session['username'], f"Registrato nuovo cliente App: {nome} {cognome}")
+            flash('Cliente registrato con successo.', 'success')
+        except Exception as e:
+            conn.rollback()
+            err_str = str(e).lower()
+            if 'unique' in err_str or 'duplicate' in err_str:
+                flash('Questo indirizzo email risulta già registrato.', 'error')
+            else:
+                flash(f"Errore durante la registrazione: {e}", 'error')
+                
     clients = conn.execute('SELECT * FROM clients').fetchall()
     conn.close()
     
-    content = """
+    content = f"""
     <h2>Gestione Clienti (Accesso Web App Mobile)</h2>
     <div class="card shadow-sm mb-4 p-3">
         <h5>Nuovo Cliente</h5>
@@ -38,15 +54,34 @@ def manage_clients():
         </form>
     </div>
     <div class="table-responsive">
-        <table class="table table-striped bg-white shadow-sm">
-            <thead><tr><th>Nome</th><th>Email / Cellulare</th><th>PIN App Mobile</th></tr></thead>
+        <table class="table table-striped bg-white shadow-sm align-middle">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Email / Cellulare</th>
+                    <th>PIN App Mobile</th>
+                </tr>
+            </thead>
             <tbody>
-                {% for cl in clients %}
-                <tr><td>{{ cl.nome }} {{ cl.cognome }}</td><td>{{ cl.email }} | {{ cl.cellulare }}</td><td><code>{{ cl.pin_code }}</code></td></tr>
-                {% endfor %}
+    """
+    
+    rows = ""
+    for cl in clients:
+        c_dict = dict(cl)
+        rows += f"""
+        <tr>
+            <td>{c_dict.get('nome', '')} {c_dict.get('cognome', '')}</td>
+            <td>{c_dict.get('email', '')} | {c_dict.get('cellulare', '') or 'N/D'}</td>
+            <td><code>{c_dict.get('pin_code', '')}</code></td>
+        </tr>
+        """
+        
+    if not clients:
+        rows = '<tr><td colspan="3" class="text-center text-muted">Nessun cliente registrato al momento.</td></tr>'
+        
+    content += rows + """
             </tbody>
         </table>
     </div>
     """
     return render_page(content, clients=clients)
-5.
