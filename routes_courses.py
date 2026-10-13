@@ -1,4 +1,4 @@
-from flask import Blueprint, request, redirect, url_for, session, flash
+from flask import Blueprint, request, redirect, url_for, session, flash, jsonify
 from database import get_db, log_activity, DATABASE_URL
 from templates_layout import render_page
 from datetime import datetime, timedelta
@@ -79,10 +79,10 @@ def manage_courses():
             descrizione = request.form.get('descrizione', '')
             instructor_id = request.form.get('instructor_id')
             room_id = request.form.get('room_id')
-            scope = request.form.get('scope', 'single') # 'single' o 'future'
+            start_date = request.form.get('start_date')
+            scope = request.form.get('scope', 'future')
             
             try:
-                # Recupera il course_id dall'istanza di lezione
                 if DATABASE_URL:
                     res = cursor.execute('SELECT course_id, data_lezione FROM lesson_instances WHERE id = %s', (lesson_id,)).fetchone()
                 else:
@@ -92,30 +92,28 @@ def manage_courses():
                     c_id = res['course_id']
                     target_date = res['data_lezione']
                     
-                    if scope == 'future':
-                        # Aggiorna il corso principale e rimuove/ricrea le istanze future da questa data in poi
-                        if DATABASE_URL:
-                            cursor.execute('''UPDATE courses SET nome=%s, descrizione=%s, instructor_id=%s, room_id=%s WHERE id=%s''',
-                                           (nome, descrizione, instructor_id or None, room_id or None, c_id))
-                            cursor.execute('DELETE FROM lesson_instances WHERE course_id = %s AND data_lezione >= %s', (c_id, target_date))
-                            cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (%s, %s, %s)',
-                                           (c_id, target_date, 'Programmata'))
-                        else:
-                            cursor.execute('''UPDATE courses SET nome=?, descrizione=?, instructor_id=?, room_id=? WHERE id=?''',
-                                           (nome, descrizione, instructor_id or None, room_id or None, c_id))
-                            cursor.execute('DELETE FROM lesson_instances WHERE course_id = ? AND data_lezione >= ?', (c_id, target_date))
-                            cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (?, ?, ?)',
-                                           (c_id, target_date, 'Programmata'))
-                        flash('Corso e lezioni successive aggiornati con successo!', 'success')
+                    if DATABASE_URL:
+                        cursor.execute('''UPDATE courses SET nome=%s, descrizione=%s, instructor_id=%s, room_id=%s WHERE id=%s''',
+                                       (nome, descrizione, instructor_id or None, room_id or None, c_id))
                     else:
-                        # Modifica solo il nome/dettagli globali o gestisce la singola istanza
-                        if DATABASE_URL:
-                            cursor.execute('''UPDATE courses SET nome=%s, descrizione=%s, instructor_id=%s, room_id=%s WHERE id=%s''',
-                                           (nome, descrizione, instructor_id or None, room_id or None, c_id))
-                        else:
-                            cursor.execute('''UPDATE courses SET nome=?, descrizione=?, instructor_id=?, room_id=? WHERE id=?''',
-                                           (nome, descrizione, instructor_id or None, room_id or None, c_id))
-                        flash('Modifiche salvate con successo!', 'success')
+                        cursor.execute('''UPDATE courses SET nome=?, descrizione=?, instructor_id=?, room_id=? WHERE id=?''',
+                                       (nome, descrizione, instructor_id or None, room_id or None, c_id))
+                    
+                    if scope == 'future' and start_date:
+                        cursor.execute('DELETE FROM lesson_instances WHERE course_id = ? AND data_lezione >= ?' if not DATABASE_URL else 'DELETE FROM lesson_instances WHERE course_id = %s AND data_lezione >= %s', (c_id, target_date))
+                        
+                        current_date = datetime.strptime(start_date, '%Y-%m-%d')
+                        for i in range(26): 
+                            date_str = current_date.strftime('%Y-%m-%d')
+                            if DATABASE_URL:
+                                cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (%s, %s, %s)',
+                                               (c_id, date_str, 'Programmata'))
+                            else:
+                                cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (?, ?, ?)',
+                                               (c_id, date_str, 'Programmata'))
+                            current_date += timedelta(weeks=1)
+                            
+                    flash('Corso e programmazione aggiornati con successo!', 'success')
                         
                 conn.commit()
                 log_activity(session['username'], f"Aggiornato corso ID: {c_id}")
@@ -124,6 +122,10 @@ def manage_courses():
                 flash(f"Errore durante l'aggiornamento: {e}", 'error')
                 
         return redirect(url_for('courses_bp.manage_courses'))
+
+    user_id = session.get('user_id')
+    user_pref = conn.execute('SELECT calendar_view FROM sys_users WHERE id = ?' if not DATABASE_URL else 'SELECT calendar_view FROM sys_users WHERE id = %s', (user_id,)).fetchone()
+    current_view = user_pref['calendar_view'] if user_pref and user_pref['calendar_view'] else 'dayGridWeek'
 
     instructors = conn.execute('SELECT * FROM instructors').fetchall()
     rooms = conn.execute('SELECT * FROM rooms').fetchall()
@@ -232,7 +234,7 @@ def manage_courses():
         </div>
     </div>
 
-    <!-- MODALE ANTEPRIMA EVENTO (GOOGLE CALENDAR STYLE) -->
+    <!-- MODALE ANTEPRIMA EVENTO -->
     <div class="modal fade" id="eventPreviewModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -254,7 +256,7 @@ def manage_courses():
         </div>
     </div>
 
-    <!-- MODALE MODIFICA CORSO (CON OPZIONE RIPETIZIONE SUCCESSIVA) -->
+    <!-- MODALE MODIFICA COMPLETA CORSO -->
     <div class="modal fade" id="editCourseModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -262,7 +264,7 @@ def manage_courses():
                     <input type="hidden" name="action" value="update">
                     <input type="hidden" name="lesson_id" id="edit_lesson_id">
                     <div class="modal-header bg-warning text-dark">
-                        <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Modifica Corso</h5>
+                        <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Modifica Completa Corso</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
@@ -289,11 +291,33 @@ def manage_courses():
                                     {instructors_options}
                                 </select>
                             </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Data Inizio / Riferimento</label>
+                                <input type="date" name="start_date" id="edit_start_date" class="form-control" required>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Orario Inizio</label>
+                                <input type="time" name="start_time" id="edit_start_time" class="form-control" value="09:00" required onchange="calculateEditEndTime()">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Durata (minuti)</label>
+                                <select id="edit_duration_minutes" class="form-select" onchange="calculateEditEndTime()">
+                                    <option value="30">30 minuti</option>
+                                    <option value="45">45 minuti</option>
+                                    <option value="60" selected>60 minuti (1h)</option>
+                                    <option value="90">90 minuti (1h 30m)</option>
+                                    <option value="120">120 minuti (2h)</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Orario Fine (Calcolato)</label>
+                                <input type="time" name="end_time" id="edit_end_time" class="form-control" value="10:00" required readonly>
+                            </div>
                             <div class="col-12">
                                 <label class="form-label fw-bold">Ambito della Modifica</label>
                                 <select name="scope" class="form-select" required>
-                                    <option value="future">Modifica questo evento e tutti i giorni ripetuti successivi</option>
-                                    <option value="single">Modifica solo questo evento (proprietà generali)</option>
+                                    <option value="future">Applica modifiche a questo evento e a tutte le ripetizioni successive</option>
+                                    <option value="single">Applica modifiche solo a questo evento specifico</option>
                                 </select>
                             </div>
                         </div>
@@ -396,8 +420,10 @@ def manage_courses():
 
     document.addEventListener('DOMContentLoaded', function() {{
         var calendarEl = document.getElementById('calendar');
+        var initialViewName = "{current_view}";
+
         var calendar = new FullCalendar.Calendar(calendarEl, {{
-            initialView: 'dayGridWeek',
+            initialView: initialViewName,
             headerToolbar: {{
                 left: 'prev,next today',
                 center: 'title',
@@ -411,6 +437,14 @@ def manage_courses():
                 day: 'Giorno'
             }},
             events: {events_json_str},
+            datesSet: function(info) {{
+                var activeView = info.view.type;
+                fetch('/courses/save-view', {{
+                    method: 'POST',
+                    headers: {{ 'Content-Type': 'application/json' }},
+                    body: JSON.stringify({{ view: activeView }})
+                }});
+            }},
             dateClick: function(info) {{
                 document.getElementById('start_date').value = info.dateStr;
                 var myModal = new bootstrap.Modal(document.getElementById('createCourseModal'));
@@ -443,6 +477,7 @@ def manage_courses():
             document.getElementById('edit_descrizione').value = selectedEventData.extendedProps.descrizione;
             document.getElementById('edit_room_id').value = selectedEventData.extendedProps.roomID;
             document.getElementById('edit_instructor_id').value = selectedEventData.extendedProps.instructorID;
+            document.getElementById('edit_start_date').value = selectedEventData.extendedProps.dataLezione;
 
             var editModal = new bootstrap.Modal(document.getElementById('editCourseModal'));
             editModal.show();
@@ -456,14 +491,24 @@ def manage_courses():
             var parts = startTime.split(':');
             var hours = parseInt(parts[0]);
             var minutes = parseInt(parts[1]);
-            
             var date = new Date();
             date.setHours(hours);
             date.setMinutes(minutes + duration);
-            
-            var endHours = String(date.getHours()).padStart(2, '0');
-            var endMinutes = String(date.getMinutes()).padStart(2, '0');
-            document.getElementById('end_time').value = endHours + ':' + endMinutes;
+            document.getElementById('end_time').value = String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+        }}
+    }}
+
+    function calculateEditEndTime() {{
+        var startTime = document.getElementById('edit_start_time').value;
+        var duration = parseInt(document.getElementById('edit_duration_minutes').value);
+        if (startTime) {{
+            var parts = startTime.split(':');
+            var hours = parseInt(parts[0]);
+            var minutes = parseInt(parts[1]);
+            var date = new Date();
+            date.setHours(hours);
+            date.setMinutes(minutes + duration);
+            document.getElementById('edit_end_time').value = String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
         }}
     }}
 
@@ -471,7 +516,6 @@ def manage_courses():
         var rec = document.getElementById('recurrence').value;
         var untilBox = document.getElementById('until_box');
         var countBox = document.getElementById('count_box');
-        
         if (rec !== 'none') {{
             untilBox.style.display = 'block';
             countBox.style.display = 'block';
@@ -483,6 +527,26 @@ def manage_courses():
     </script>
     """
     return render_page(content)
+
+@courses_bp.route('/courses/save-view', methods=['POST'])
+def save_calendar_view():
+    if 'user_id' not in session:
+        return jsonify({'status': 'unauthorized'}), 401
+    
+    data = request.get_json()
+    view_name = data.get('view')
+    if view_name:
+        user_id = session['user_id']
+        conn = get_db()
+        cursor = conn.cursor()
+        if DATABASE_URL:
+            cursor.execute('UPDATE sys_users SET calendar_view = %s WHERE id = %s', (view_name, user_id))
+        else:
+            cursor.execute('UPDATE sys_users SET calendar_view = ? WHERE id = ?', (view_name, user_id))
+        conn.commit()
+        conn.close()
+        return jsonify({'status': 'success'})
+    return jsonify({'status': 'error'}), 400
 
 @courses_bp.route('/courses/delete', methods=['POST'])
 def delete_course():
