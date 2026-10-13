@@ -40,7 +40,6 @@ def manage_courses():
                                    (nome, descrizione, instructor_id or None, room_id or None))
                     course_id = cursor.lastrowid
                 
-                # Salvataggio orario nei giorni/corso se necessario o gestione istanze
                 if start_date:
                     current_date = datetime.strptime(start_date, '%Y-%m-%d')
                     end_repeat_date = datetime.strptime(repeat_until, '%Y-%m-%d') if repeat_until else current_date + timedelta(days=365)
@@ -68,55 +67,62 @@ def manage_courses():
                         count += 1
                     
                 conn.commit()
-                log_activity(session['username'], f"Creato corso con calendario: {nome}")
-                flash('Corso e programmazione calendarizzata creati con successo!', 'success')
+                log_activity(session['username'], f"Creato corso: {nome}")
+                flash('Corso creato con successo!', 'success')
             except Exception as e:
                 conn.rollback()
                 flash(f"Errore durante la creazione del corso: {e}", 'error')
                 
         elif action == 'update':
             course_id = request.form.get('course_id')
+            lesson_id = request.form.get('lesson_id')
             nome = request.form.get('nome')
             descrizione = request.form.get('descrizione', '')
             instructor_id = request.form.get('instructor_id')
             room_id = request.form.get('room_id')
             start_date = request.form.get('start_date')
-            start_time = request.form.get('start_time', '09:00')
+            target_date = request.form.get('target_date')
             scope = request.form.get('scope', 'future')
             
             try:
-                if DATABASE_URL:
-                    cursor.execute('''UPDATE courses SET nome=%s, descrizione=%s, instructor_id=%s, room_id=%s WHERE id=%s''',
-                                   (nome, descrizione, instructor_id or None, room_id or None, course_id))
-                else:
-                    cursor.execute('''UPDATE courses SET nome=?, descrizione=?, instructor_id=?, room_id=? WHERE id=?''',
-                                   (nome, descrizione, instructor_id or None, room_id or None, course_id))
-                
-                if scope == 'future' and start_date:
-                    target_date = request.form.get('target_date')
+                if scope == 'single':
+                    # Se l'utente vuole modificare SOLO la singola istanza della lezione:
+                    # Crea un nuovo corso derivato con i nuovi parametri solo per quella singola data
                     if DATABASE_URL:
-                        cursor.execute('DELETE FROM lesson_instances WHERE course_id = %s AND data_lezione >= %s', (course_id, target_date))
-                        cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (%s, %s, %s)',
-                                       (course_id, start_date, 'Programmata'))
+                        cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id)
+                                          VALUES (%s, %s, %s, %s) RETURNING id''',
+                                       (nome, descrizione, instructor_id or None, room_id or None))
+                        new_course_id = cursor.fetchone()['id']
+                        if lesson_id:
+                            cursor.execute('UPDATE lesson_instances SET course_id = %s, data_lezione = %s WHERE id = %s',
+                                           (new_course_id, start_date or target_date, lesson_id))
                     else:
-                        cursor.execute('DELETE FROM lesson_instances WHERE course_id = ? AND data_lezione >= ?', (course_id, target_date))
-                        cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (?, ?, ?)',
-                                       (course_id, start_date, 'Programmata'))
+                        cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id)
+                                          VALUES (?, ?, ?, ?)''',
+                                       (nome, descrizione, instructor_id or None, room_id or None))
+                        new_course_id = cursor.lastrowid
+                        if lesson_id:
+                            cursor.execute('UPDATE lesson_instances SET course_id = ?, data_lezione = ? WHERE id = ?',
+                                           (new_course_id, start_date or target_date, lesson_id))
+                else:
+                    # Aggiornamento standard delle informazioni generali del corso
+                    if DATABASE_URL:
+                        cursor.execute('''UPDATE courses SET nome=%s, descrizione=%s, instructor_id=%s, room_id=%s WHERE id=%s''',
+                                       (nome, descrizione, instructor_id or None, room_id or None, course_id))
+                    else:
+                        cursor.execute('''UPDATE courses SET nome=?, descrizione=?, instructor_id=?, room_id=? WHERE id=?''',
+                                       (nome, descrizione, instructor_id or None, room_id or None, course_id))
                     
-                    current_date = datetime.strptime(start_date, '%Y-%m-%d') + timedelta(weeks=1)
-                    for i in range(25): 
-                        date_str = current_date.strftime('%Y-%m-%d')
+                    # Se la data dell'istanza è stata cambiata, aggiorna la data specifica
+                    if start_date and target_date and lesson_id:
                         if DATABASE_URL:
-                            cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (%s, %s, %s)',
-                                           (course_id, date_str, 'Programmata'))
+                            cursor.execute('UPDATE lesson_instances SET data_lezione = %s WHERE id = %s', (start_date, lesson_id))
                         else:
-                            cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (?, ?, ?)',
-                                           (course_id, date_str, 'Programmata'))
-                        current_date += timedelta(weeks=1)
-                        
+                            cursor.execute('UPDATE lesson_instances SET data_lezione = ? WHERE id = ?', (start_date, lesson_id))
+
                 conn.commit()
                 log_activity(session['username'], f"Aggiornato corso ID: {course_id}")
-                flash('Corso e programmazione aggiornati con successo!', 'success')
+                flash('Modifiche salvate con successo!', 'success')
             except Exception as e:
                 conn.rollback()
                 flash(f"Errore durante l'aggiornamento: {e}", 'error')
@@ -155,7 +161,6 @@ def manage_courses():
     for l in lessons:
         ld = dict(l)
         if ld.get('data_lezione') and ld.get('corso_nome'):
-            # Ora predefinita o estratta, mostriamo ad esempio 09:00 o orario fisso
             orario_str = "09:00" 
             title = f"{orario_str} - {ld['corso_nome']} ({ld.get('sala_nome', 'Sala N/D')})"
             events_js.append(f"""{{
@@ -166,6 +171,7 @@ def manage_courses():
                 backgroundColor: "#0d6efd",
                 borderColor: "#0d6efd",
                 extendedProps: {{
+                    lessonId: "{ld['lesson_id']}",
                     courseId: "{ld['course_id']}",
                     corsoNome: "{ld['corso_nome']}",
                     descrizione: "{ld.get('descrizione', '') or ''}",
@@ -188,7 +194,7 @@ def manage_courses():
             <td>{cd.get('r_nome', 'N/D')}</td>
             <td>{cd.get('i_nome', '')} {cd.get('i_cognome', '')}</td>
             <td>
-                <form method="POST" action="/courses/delete" style="display:inline;" onsubmit="return confirm('Eliminare questo corso?');">
+                <form method="POST" action="/courses/delete" style="display:inline;" onsubmit="return confirm('Eliminare questo corso e tutte le relative lezioni?');">
                     <input type="hidden" name="course_id" value="{cd.get('id')}">
                     <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                 </form>
@@ -267,10 +273,11 @@ def manage_courses():
                 <form method="POST">
                     <input type="hidden" name="action" value="update">
                     <input type="hidden" name="course_id" id="edit_course_id">
+                    <input type="hidden" name="lesson_id" id="edit_lesson_id">
                     <input type="hidden" name="target_date" id="edit_target_date">
                     <input type="hidden" name="start_date" id="edit_start_date">
                     <div class="modal-header bg-warning text-dark">
-                        <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Modifica Completa Corso</h5>
+                        <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Modifica Corso</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                     </div>
                     <div class="modal-body">
@@ -298,7 +305,7 @@ def manage_courses():
                                 </select>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Data Inizio / Riferimento (GG/MM/AAAA)</label>
+                                <label class="form-label">Data Lezione (GG/MM/AAAA)</label>
                                 <input type="text" id="edit_start_date_display" class="form-control" placeholder="GG/MM/AAAA" required onchange="updateISODate(this.value)">
                             </div>
                             <div class="col-md-4">
@@ -322,8 +329,8 @@ def manage_courses():
                             <div class="col-12">
                                 <label class="form-label fw-bold">Ambito della Modifica</label>
                                 <select name="scope" class="form-select" required>
-                                    <option value="future">Applica modifiche a questo evento e a tutte le ripetizioni successive</option>
-                                    <option value="single">Applica modifiche solo a questo evento specifico</option>
+                                    <option value="future">Applica modifiche al corso complessivo</option>
+                                    <option value="single">Applica modifiche SOLO a questa singola occorrenza/lezione</option>
                                 </select>
                             </div>
                         </div>
@@ -409,7 +416,7 @@ def manage_courses():
                             </div>
                             <div class="col-md-6" id="count_box">
                                 <label class="form-label">Numero massimo di ripetizioni</label>
-                                <input type="number" name="repeat_count" class="form-control" placeholder="Es. 10" min="1" max="365">
+                                <input type="number" name="repeat_count" class="form-control" placeholder="Es. 3" min="1" max="365">
                             </div>
                         </div>
                     </div>
@@ -511,6 +518,7 @@ def manage_courses():
 
         if (selectedEventData) {{
             document.getElementById('edit_course_id').value = selectedEventData.extendedProps.courseId;
+            document.getElementById('edit_lesson_id').value = selectedEventData.extendedProps.lessonId;
             document.getElementById('edit_target_date').value = selectedEventData.extendedProps.dataLezione;
             document.getElementById('edit_nome').value = selectedEventData.extendedProps.corsoNome;
             document.getElementById('edit_descrizione').value = selectedEventData.extendedProps.descrizione;
@@ -556,7 +564,7 @@ def manage_courses():
             var date = new Date();
             date.setHours(hours);
             date.setMinutes(minutes + duration);
-            document.getElementById('edit_end_time').value = String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+            document.getElementById('end_time').value = String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
         }}
     }}
 
