@@ -77,7 +77,8 @@ def init_db():
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS rooms (
                             id SERIAL PRIMARY KEY,
-                            nome TEXT
+                            nome TEXT,
+                            capienza TEXT
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS clients (
                             id SERIAL PRIMARY KEY,
@@ -177,7 +178,8 @@ def init_db():
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS rooms (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            nome TEXT
+                            nome TEXT,
+                            capienza TEXT
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS clients (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
