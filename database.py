@@ -55,7 +55,9 @@ def init_db():
                             nome TEXT,
                             descrizione TEXT,
                             instructor_id INTEGER,
-                            room_id INTEGER
+                            room_id INTEGER,
+                            orario_inizio TEXT DEFAULT '09:00',
+                            orario_fine TEXT DEFAULT '10:00'
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS course_days (
                             course_id INTEGER,
@@ -109,6 +111,13 @@ def init_db():
                             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                           )''')
         
+        # Aggiunta colonne se la tabella esisteva già prima senza di esse
+        try:
+            cursor.execute("ALTER TABLE courses ADD COLUMN orario_inizio TEXT DEFAULT '09:00'")
+            cursor.execute("ALTER TABLE courses ADD COLUMN orario_fine TEXT DEFAULT '10:00'")
+        except Exception:
+            pass
+
         cursor.execute('SELECT COUNT(*) as cnt FROM roles')
         if cursor.fetchone()['cnt'] == 0:
             cursor.executemany('INSERT INTO roles (name) VALUES (%s)', [('admin',), ('superuser',), ('staff',)])
@@ -157,7 +166,9 @@ def init_db():
                             nome TEXT,
                             descrizione TEXT,
                             instructor_id INTEGER,
-                            room_id INTEGER
+                            room_id INTEGER,
+                            orario_inizio TEXT DEFAULT '09:00',
+                            orario_fine TEXT DEFAULT '10:00'
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS course_days (
                             course_id INTEGER,
@@ -211,6 +222,15 @@ def init_db():
                             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                           )''')
         
+        try:
+            cursor.execute("ALTER TABLE courses ADD COLUMN orario_inizio TEXT DEFAULT '09:00'")
+        except Exception:
+            pass
+        try:
+            cursor.execute("ALTER TABLE courses ADD COLUMN orario_fine TEXT DEFAULT '10:00'")
+        except Exception:
+            pass
+
         cursor.execute('SELECT COUNT(*) as cnt FROM roles')
         if cursor.fetchone()['cnt'] == 0:
             cursor.executemany('INSERT INTO roles (name) VALUES (?)', [('admin',), ('superuser',), ('staff',)])
