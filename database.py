@@ -42,7 +42,8 @@ def init_db():
                             nome TEXT,
                             cognome TEXT,
                             email TEXT,
-                            cellulare TEXT
+                            cellulare TEXT,
+                            calendar_view TEXT DEFAULT 'dayGridWeek'
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS company_info (
                             id SERIAL PRIMARY KEY,
@@ -143,7 +144,8 @@ def init_db():
                             nome TEXT,
                             cognome TEXT,
                             email TEXT,
-                            cellulare TEXT
+                            cellulare TEXT,
+                            calendar_view TEXT DEFAULT 'dayGridWeek'
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS company_info (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
