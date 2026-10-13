@@ -16,12 +16,14 @@ def manage_users():
     
     users_rows = ""
     for u in users:
+        # Converte la riga in dizionario per supportare il metodo .get() sia su SQLite che su Postgres
+        ud = dict(u)
         users_rows += f"""
         <tr>
-            <td><strong>{u['username']}</strong></td>
-            <td>{u.get('nome', '') or ''} {u.get('cognome', '') or ''}</td>
-            <td>{u.get('email', '') or ''}</td>
-            <td><span class="badge bg-secondary">{u.get('role_name', 'N/D')}</span></td>
+            <td><strong>{ud.get('username', '')}</strong></td>
+            <td>{ud.get('nome', '') or ''} {ud.get('cognome', '') or ''}</td>
+            <td>{ud.get('email', '') or ''}</td>
+            <td><span class="badge bg-secondary">{ud.get('role_name', 'N/D')}</span></td>
         </tr>
         """
     if not users:
@@ -67,11 +69,12 @@ def view_logs():
     
     logs_rows = ""
     for l in logs:
+        ld = dict(l)
         logs_rows += f"""
         <tr>
-            <td><code>{l['timestamp']}</code></td>
-            <td><strong>{l['username']}</strong></td>
-            <td>{l['action']}</td>
+            <td><code>{ld.get('timestamp', '')}</code></td>
+            <td><strong>{ld.get('username', '')}</strong></td>
+            <td>{ld.get('action', '')}</td>
         </tr>
         """
     if not logs:
