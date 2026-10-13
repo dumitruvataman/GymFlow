@@ -49,14 +49,10 @@ def index():
         return redirect(url_for('dashboard_bp.index'))
 
     courses = conn.execute('''
-        SELECT c.*, i.nome as i_nome, i.cognome as i_cognome, r.nome as r_nome,
-               GROUP_CONCAT(d.nome, ', ') as giorni_str
+        SELECT c.*, i.nome as i_nome, i.cognome as i_cognome, r.nome as r_nome
         FROM courses c 
         LEFT JOIN instructors i ON c.instructor_id = i.id 
         LEFT JOIN rooms r ON c.room_id = r.id
-        LEFT JOIN course_days cd ON c.id = cd.course_id
-        LEFT JOIN days d ON cd.day_id = d.id
-        GROUP BY c.id
     ''').fetchall()
     
     clients = conn.execute('SELECT * FROM clients').fetchall()
@@ -105,17 +101,34 @@ def index():
 
     courses_rows = ""
     for c in courses:
+        conn_d = get_db()
+        cd_list = conn_d.execute('''
+            SELECT d.nome, cd.orario_inizio, cd.orario_fine 
+            FROM course_days cd 
+            JOIN days d ON cd.day_id = d.id 
+            WHERE cd.course_id = ?
+        ''' if not DATABASE_URL else '''
+            SELECT d.nome, cd.orario_inizio, cd.orario_fine 
+            FROM course_days cd 
+            JOIN days d ON cd.day_id = d.id 
+            WHERE cd.course_id = %s
+        ''', (c['id'],)).fetchall()
+        conn_d.close()
+        
+        dettagli_orari = "<br>".join([f"<small>• <strong>{item['nome']}</strong>: {item['orario_inizio']} - {item['orario_fine']}</small>" for item in cd_list])
+        if not dettagli_orari:
+            dettagli_orari = '<span class="text-muted">Nessun giorno programmato</span>'
+
         courses_rows += f"""
         <tr>
             <td><strong>{c['nome']}</strong><br><small class="text-muted">{c['descrizione'] or ''}</small></td>
-            <td>{c['orario_inizio']} - {c['orario_fine']}</td>
-            <td><span class="badge bg-info text-dark">{c['giorni_str'] or 'Nessun giorno'}</span></td>
+            <td>{dettagli_orari}</td>
             <td>{c['r_nome'] or 'N/D'}</td>
             <td>{c['i_nome'] or ''} {c['i_cognome'] or ''}</td>
         </tr>
         """
     if not courses:
-        courses_rows = '<tr><td colspan="5" class="text-center text-muted">Nessun corso programmato al momento.</td></tr>'
+        courses_rows = '<tr><td colspan="4" class="text-center text-muted">Nessun corso programmato al momento.</td></tr>'
 
     content = f"""
     <div class="row mb-4">
@@ -184,8 +197,7 @@ def index():
                 <thead>
                     <tr>
                         <th>Corso</th>
-                        <th>Orario</th>
-                        <th>Giorni</th>
+                        <th>Programmazione e Orari per Giorno</th>
                         <th>Sala</th>
                         <th>Istruttore</th>
                     </tr>
