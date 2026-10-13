@@ -54,13 +54,13 @@ def init_db():
                             nome TEXT,
                             descrizione TEXT,
                             instructor_id INTEGER,
-                            room_id INTEGER,
-                            orario_inizio TEXT,
-                            orario_fine TEXT
+                            room_id INTEGER
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS course_days (
                             course_id INTEGER,
-                            day_id INTEGER
+                            day_id INTEGER,
+                            orario_inizio TEXT,
+                            orario_fine TEXT
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS days (
                             id SERIAL PRIMARY KEY,
@@ -102,6 +102,30 @@ def init_db():
                             action TEXT,
                             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                           )''')
+        
+        # Inserimento dati di default per Postgres (Render)
+        cursor.execute('SELECT COUNT(*) as cnt FROM roles')
+        if cursor.fetchone()['cnt'] == 0:
+            cursor.executemany('INSERT INTO roles (name) VALUES (%s)', [('admin',), ('superuser',), ('staff',)])
+
+        cursor.execute('SELECT COUNT(*) as cnt FROM sys_users WHERE username = %s', ('admin',))
+        if cursor.fetchone()['cnt'] == 0:
+            hashed_pw = generate_password_hash('admin')
+            cursor.execute('INSERT INTO sys_users (username, password, role_id, nome, cognome) VALUES (%s, %s, %s, %s, %s)', 
+                           ('admin', hashed_pw, 1, 'Amministratore', 'Sistema'))
+
+        cursor.execute('SELECT COUNT(*) as cnt FROM days')
+        if cursor.fetchone()['cnt'] == 0:
+            default_days = [
+                ('Lunedì', 1), ('Martedì', 2), ('Mercoledì', 3), 
+                ('Giovedì', 4), ('Venerdì', 5), ('Sabato', 6), ('Domenica', 7)
+            ]
+            cursor.executemany('INSERT INTO days (nome, ordine) VALUES (%s, %s)', default_days)
+            
+        cursor.execute('SELECT COUNT(*) as cnt FROM company_info')
+        if cursor.fetchone()['cnt'] == 0:
+            cursor.execute('INSERT INTO company_info (nome_palestra, logo_path) VALUES (%s, %s)', ('GymFlow Palestra', 'static/logo.png'))
+
     else:
         cursor.execute('''CREATE TABLE IF NOT EXISTS roles (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -127,13 +151,13 @@ def init_db():
                             nome TEXT,
                             descrizione TEXT,
                             instructor_id INTEGER,
-                            room_id INTEGER,
-                            orario_inizio TEXT,
-                            orario_fine TEXT
+                            room_id INTEGER
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS course_days (
                             course_id INTEGER,
-                            day_id INTEGER
+                            day_id INTEGER,
+                            orario_inizio TEXT,
+                            orario_fine TEXT
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS days (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
