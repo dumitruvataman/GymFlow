@@ -18,15 +18,14 @@ def manage_courses():
         descrizione = request.form.get('descrizione', '')
         instructor_id = request.form.get('instructor_id')
         room_id = request.form.get('room_id')
-        start_date = request.form.get('start_date') # Data di inizio
-        start_time = request.form.get('start_time') # Orario inizio (es. 09:00)
-        end_time = request.form.get('end_time')     # Orario fine (es. 10:30)
-        recurrence = request.form.get('recurrence', 'none') # none, daily, weekly, monthly
-        repeat_until = request.form.get('repeat_until') # Data fine ripetizione
-        repeat_count = request.form.get('repeat_count') # Numero ripetizioni
+        start_date = request.form.get('start_date')
+        start_time = request.form.get('start_time')
+        end_time = request.form.get('end_time')
+        recurrence = request.form.get('recurrence', 'none')
+        repeat_until = request.form.get('repeat_until', '')
+        repeat_count = request.form.get('repeat_count', '')
         
         try:
-            # Inserimento del corso principale
             if DATABASE_URL:
                 cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id)
                                   VALUES (%s, %s, %s, %s) RETURNING id''',
@@ -38,34 +37,32 @@ def manage_courses():
                                (nome, descrizione, instructor_id or None, room_id or None))
                 course_id = cursor.lastrowid
             
-            # Calcolo delle istanze basate sulla ripetizione in stile Google Calendar
-            current_date = datetime.strptime(start_date, '%Y-%m-%d')
-            end_repeat_date = datetime.strptime(repeat_until, '%Y-%m-%d') if repeat_until else current_date + timedelta(days=365)
-            max_count = int(repeat_count) if repeat_count and repeat_count.isdigit() else 100
-            
-            count = 0
-            while current_date <= end_repeat_date and count < max_count:
-                date_str = current_date.strftime('%Y-%m-%d')
+            # Generazione istanze basate sulla ripetizione
+            if start_date:
+                current_date = datetime.strptime(start_date, '%Y-%m-%d')
+                end_repeat_date = datetime.strptime(repeat_until, '%Y-%m-%d') if repeat_until else current_date + timedelta(days=365)
+                max_count = int(repeat_count) if repeat_count and repeat_count.isdigit() else (365 if recurrence != 'none' else 1)
                 
-                # Inserisci l'istanza della lezione nel calendario storico/programmato
-                if DATABASE_URL:
-                    cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (%s, %s, %s)',
-                                   (course_id, date_str, 'Programmata'))
-                else:
-                    cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (?, ?, ?)',
-                                   (course_id, date_str, 'Programmata'))
-                
-                # Calcola la data successiva in base alla regola di ripetizione
-                if recurrence == 'daily':
-                    current_date += timedelta(days=1)
-                elif recurrence == 'weekly':
-                    current_date += timedelta(weeks=1)
-                elif recurrence == 'monthly':
-                    # Incremento approssimativo mensile di 30 giorni o gestito
-                    current_date += timedelta(days=30)
-                else:
-                    break # Nessuna ripetizione, esci dal ciclo dopo la prima
-                count += 1
+                count = 0
+                while current_date <= end_repeat_date and count < max_count:
+                    date_str = current_date.strftime('%Y-%m-%d')
+                    
+                    if DATABASE_URL:
+                        cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (%s, %s, %s)',
+                                       (course_id, date_str, 'Programmata'))
+                    else:
+                        cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (?, ?, ?)',
+                                       (course_id, date_str, 'Programmata'))
+                    
+                    if recurrence == 'daily':
+                        current_date += timedelta(days=1)
+                    elif recurrence == 'weekly':
+                        current_date += timedelta(weeks=1)
+                    elif recurrence == 'monthly':
+                        current_date += timedelta(days=30)
+                    else:
+                        break
+                    count += 1
                 
             conn.commit()
             log_activity(session['username'], f"Creato corso con calendario: {nome}")
@@ -76,11 +73,9 @@ def manage_courses():
             
         return redirect(url_for('courses_bp.manage_courses'))
 
-    # Recupero dati per i menu a tendina del modale
     instructors = conn.execute('SELECT * FROM instructors').fetchall()
     rooms = conn.execute('SELECT * FROM rooms').fetchall()
     
-    # Recupera tutte le istanze di lezione per popolare il calendario visivo FullCalendar
     lessons = conn.execute('''
         SELECT li.id, li.data_lezione, c.nome as corso_nome, r.nome as sala_nome,
                i.nome as i_nome, i.cognome as i_cognome
@@ -90,13 +85,17 @@ def manage_courses():
         LEFT JOIN instructors i ON c.instructor_id = i.id
     ''').fetchall()
     
-    courses_list = conn.execute('SELECT * FROM courses').fetchall()
+    courses_list = conn.execute('''
+        SELECT c.*, r.nome as r_nome, i.nome as i_nome, i.cognome as i_cognome
+        FROM courses c
+        LEFT JOIN rooms r ON c.room_id = r.id
+        LEFT JOIN instructors i ON c.instructor_id = i.id
+    ''').fetchall()
     conn.close()
     
     instructors_options = "".join([f'<option value="{i["id"]}">{i["nome"]} {i["cognome"]}</option>' for i in instructors])
     rooms_options = "".join([f'<option value="{r["id"]}">{r["nome"]}</option>' for r in rooms])
     
-    # Preparazione eventi JSON per FullCalendar
     events_js = []
     for l in lessons:
         ld = dict(l)
@@ -113,23 +112,24 @@ def manage_courses():
 
     courses_rows = ""
     for c in courses_list:
+        cd = dict(c)
         courses_rows += f"""
         <tr>
-            <td><strong>{c['nome']}</strong><br><small class="text-muted">{c['descrizione'] or ''}</small></td>
-            <td>{c.get('r_nome', 'N/D')}</td>
+            <td><strong>{cd.get('nome', '')}</strong><br><small class="text-muted">{cd.get('descrizione', '') or ''}</small></td>
+            <td>{cd.get('r_nome', 'N/D')}</td>
+            <td>{cd.get('i_nome', '')} {cd.get('i_cognome', '')}</td>
             <td>
                 <form method="POST" action="/courses/delete" style="display:inline;" onsubmit="return confirm('Eliminare questo corso?');">
-                    <input type="hidden" name="course_id" value="{c['id']}">
+                    <input type="hidden" name="course_id" value="{cd.get('id')}">
                     <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
                 </form>
             </td>
         </tr>
         """
     if not courses_list:
-        courses_rows = '<tr><td colspan="3" class="text-center text-muted">Nessun corso programmato al momento.</td></tr>'
+        courses_rows = '<tr><td colspan="4" class="text-center text-muted">Nessun corso programmato al momento.</td></tr>'
 
     content = f"""
-    <!-- Inclusione libreria FullCalendar CSS & JS -->
     <link href='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.css' rel='stylesheet' />
     <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js'></script>
 
@@ -140,12 +140,11 @@ def manage_courses():
                 <p class="text-muted mb-0">Gestione e pianificazione dei corsi in stile Google Calendar.</p>
             </div>
             <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createCourseModal">
-                <i class="bi bi-plus-lg"><i/> Crea Nuovo Corso
+                <i class="bi bi-plus-lg"></i> Crea Nuovo Corso
             </button>
         </div>
     </div>
 
-    <!-- Vista Calendario FullCalendar -->
     <div class="card shadow-sm p-4 mb-4 bg-white">
         <div id="calendar" style="min-height: 650px;"></div>
     </div>
@@ -158,6 +157,7 @@ def manage_courses():
                     <tr>
                         <th>Corso</th>
                         <th>Sala</th>
+                        <th>Istruttore</th>
                         <th>Azioni</th>
                     </tr>
                 </thead>
@@ -168,7 +168,6 @@ def manage_courses():
         </div>
     </div>
 
-    <!-- MODALE CREAZIONE CORSO IN STILE GOOGLE CALENDAR -->
     <div class="modal fade" id="createCourseModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
@@ -236,11 +235,11 @@ def manage_courses():
                                 </select>
                             </div>
 
-                            <div class="col-md-6 recurrence-option d-none" id="until_box">
+                            <div class="col-md-6" id="until_box">
                                 <label class="form-label">Ripeti fino alla data</label>
                                 <input type="date" name="repeat_until" class="form-control">
                             </div>
-                            <div class="col-md-6 recurrence-option d-none" id="count_box">
+                            <div class="col-md-6" id="count_box">
                                 <label class="form-label">Numero massimo di ripetizioni</label>
                                 <input type="number" name="repeat_count" class="form-control" placeholder="Es. 10" min="1" max="365">
                             </div>
@@ -280,6 +279,7 @@ def manage_courses():
             }}
         }});
         calendar.render();
+        toggleRecurrenceOptions();
     }});
 
     function calculateEndTime() {{
@@ -306,11 +306,11 @@ def manage_courses():
         var countBox = document.getElementById('count_box');
         
         if (rec !== 'none') {{
-            untilBox.classList.remove('d-none');
-            countBox.classList.remove('d-none');
+            untilBox.style.display = 'block';
+            countBox.style.display = 'block';
         }} else {{
-            untilBox.classList.add('d-none');
-            countBox.classList.add('d-none');
+            untilBox.style.display = 'none';
+            countBox.style.display = 'none';
         }}
     }}
     </script>
