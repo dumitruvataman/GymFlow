@@ -14,71 +14,124 @@ def manage_courses():
     cursor = conn.cursor()
     
     if request.method == 'POST':
-        nome = request.form.get('nome')
-        descrizione = request.form.get('descrizione', '')
-        instructor_id = request.form.get('instructor_id')
-        room_id = request.form.get('room_id')
-        start_date = request.form.get('start_date')
-        start_time = request.form.get('start_time')
-        end_time = request.form.get('end_time')
-        recurrence = request.form.get('recurrence', 'none')
-        repeat_until = request.form.get('repeat_until', '')
-        repeat_count = request.form.get('repeat_count', '')
+        action = request.form.get('action', 'create')
         
-        try:
-            if DATABASE_URL:
-                cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id)
-                                  VALUES (%s, %s, %s, %s) RETURNING id''',
-                               (nome, descrizione, instructor_id or None, room_id or None))
-                course_id = cursor.fetchone()['id']
-            else:
-                cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id)
-                                  VALUES (?, ?, ?, ?)''',
-                               (nome, descrizione, instructor_id or None, room_id or None))
-                course_id = cursor.lastrowid
+        if action == 'create':
+            nome = request.form.get('nome')
+            descrizione = request.form.get('descrizione', '')
+            instructor_id = request.form.get('instructor_id')
+            room_id = request.form.get('room_id')
+            start_date = request.form.get('start_date')
+            start_time = request.form.get('start_time')
+            end_time = request.form.get('end_time')
+            recurrence = request.form.get('recurrence', 'none')
+            repeat_until = request.form.get('repeat_until', '')
+            repeat_count = request.form.get('repeat_count', '')
             
-            # Generazione istanze basate sulla ripetizione
-            if start_date:
-                current_date = datetime.strptime(start_date, '%Y-%m-%d')
-                end_repeat_date = datetime.strptime(repeat_until, '%Y-%m-%d') if repeat_until else current_date + timedelta(days=365)
-                max_count = int(repeat_count) if repeat_count and repeat_count.isdigit() else (365 if recurrence != 'none' else 1)
+            try:
+                if DATABASE_URL:
+                    cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id)
+                                      VALUES (%s, %s, %s, %s) RETURNING id''',
+                                   (nome, descrizione, instructor_id or None, room_id or None))
+                    course_id = cursor.fetchone()['id']
+                else:
+                    cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id)
+                                      VALUES (?, ?, ?, ?)''',
+                                   (nome, descrizione, instructor_id or None, room_id or None))
+                    course_id = cursor.lastrowid
                 
-                count = 0
-                while current_date <= end_repeat_date and count < max_count:
-                    date_str = current_date.strftime('%Y-%m-%d')
+                if start_date:
+                    current_date = datetime.strptime(start_date, '%Y-%m-%d')
+                    end_repeat_date = datetime.strptime(repeat_until, '%Y-%m-%d') if repeat_until else current_date + timedelta(days=365)
+                    max_count = int(repeat_count) if repeat_count and repeat_count.isdigit() else (365 if recurrence != 'none' else 1)
                     
-                    if DATABASE_URL:
-                        cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (%s, %s, %s)',
-                                       (course_id, date_str, 'Programmata'))
-                    else:
-                        cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (?, ?, ?)',
-                                       (course_id, date_str, 'Programmata'))
+                    count = 0
+                    while current_date <= end_repeat_date and count < max_count:
+                        date_str = current_date.strftime('%Y-%m-%d')
+                        
+                        if DATABASE_URL:
+                            cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (%s, %s, %s)',
+                                           (course_id, date_str, 'Programmata'))
+                        else:
+                            cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (?, ?, ?)',
+                                           (course_id, date_str, 'Programmata'))
+                        
+                        if recurrence == 'daily':
+                            current_date += timedelta(days=1)
+                        elif recurrence == 'weekly':
+                            current_date += timedelta(weeks=1)
+                        elif recurrence == 'monthly':
+                            current_date += timedelta(days=30)
+                        else:
+                            break
+                        count += 1
                     
-                    if recurrence == 'daily':
-                        current_date += timedelta(days=1)
-                    elif recurrence == 'weekly':
-                        current_date += timedelta(weeks=1)
-                    elif recurrence == 'monthly':
-                        current_date += timedelta(days=30)
-                    else:
-                        break
-                    count += 1
+                conn.commit()
+                log_activity(session['username'], f"Creato corso con calendario: {nome}")
+                flash('Corso e programmazione calendarizzata creati con successo!', 'success')
+            except Exception as e:
+                conn.rollback()
+                flash(f"Errore durante la creazione del corso: {e}", 'error')
                 
-            conn.commit()
-            log_activity(session['username'], f"Creato corso con calendario: {nome}")
-            flash('Corso e programmazione calendarizzata creati con successo!', 'success')
-        except Exception as e:
-            conn.rollback()
-            flash(f"Errore durante la creazione del corso: {e}", 'error')
+        elif action == 'update':
+            lesson_id = request.form.get('lesson_id')
+            nome = request.form.get('nome')
+            descrizione = request.form.get('descrizione', '')
+            instructor_id = request.form.get('instructor_id')
+            room_id = request.form.get('room_id')
+            scope = request.form.get('scope', 'single') # 'single' o 'future'
             
+            try:
+                # Recupera il course_id dall'istanza di lezione
+                if DATABASE_URL:
+                    res = cursor.execute('SELECT course_id, data_lezione FROM lesson_instances WHERE id = %s', (lesson_id,)).fetchone()
+                else:
+                    res = cursor.execute('SELECT course_id, data_lezione FROM lesson_instances WHERE id = ?', (lesson_id,)).fetchone()
+                
+                if res:
+                    c_id = res['course_id']
+                    target_date = res['data_lezione']
+                    
+                    if scope == 'future':
+                        # Aggiorna il corso principale e rimuove/ricrea le istanze future da questa data in poi
+                        if DATABASE_URL:
+                            cursor.execute('''UPDATE courses SET nome=%s, descrizione=%s, instructor_id=%s, room_id=%s WHERE id=%s''',
+                                           (nome, descrizione, instructor_id or None, room_id or None, c_id))
+                            cursor.execute('DELETE FROM lesson_instances WHERE course_id = %s AND data_lezione >= %s', (c_id, target_date))
+                            cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (%s, %s, %s)',
+                                           (c_id, target_date, 'Programmata'))
+                        else:
+                            cursor.execute('''UPDATE courses SET nome=?, descrizione=?, instructor_id=?, room_id=? WHERE id=?''',
+                                           (nome, descrizione, instructor_id or None, room_id or None, c_id))
+                            cursor.execute('DELETE FROM lesson_instances WHERE course_id = ? AND data_lezione >= ?', (c_id, target_date))
+                            cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (?, ?, ?)',
+                                           (c_id, target_date, 'Programmata'))
+                        flash('Corso e lezioni successive aggiornati con successo!', 'success')
+                    else:
+                        # Modifica solo il nome/dettagli globali o gestisce la singola istanza
+                        if DATABASE_URL:
+                            cursor.execute('''UPDATE courses SET nome=%s, descrizione=%s, instructor_id=%s, room_id=%s WHERE id=%s''',
+                                           (nome, descrizione, instructor_id or None, room_id or None, c_id))
+                        else:
+                            cursor.execute('''UPDATE courses SET nome=?, descrizione=?, instructor_id=?, room_id=? WHERE id=?''',
+                                           (nome, descrizione, instructor_id or None, room_id or None, c_id))
+                        flash('Modifiche salvate con successo!', 'success')
+                        
+                conn.commit()
+                log_activity(session['username'], f"Aggiornato corso ID: {c_id}")
+            except Exception as e:
+                conn.rollback()
+                flash(f"Errore durante l'aggiornamento: {e}", 'error')
+                
         return redirect(url_for('courses_bp.manage_courses'))
 
     instructors = conn.execute('SELECT * FROM instructors').fetchall()
     rooms = conn.execute('SELECT * FROM rooms').fetchall()
     
     lessons = conn.execute('''
-        SELECT li.id, li.data_lezione, c.nome as corso_nome, r.nome as sala_nome,
-               i.nome as i_nome, i.cognome as i_cognome
+        SELECT li.id as lesson_id, li.data_lezione, c.id as course_id, c.nome as corso_nome, 
+               c.descrizione, c.instructor_id, c.room_id,
+               r.nome as sala_nome, i.nome as i_nome, i.cognome as i_cognome
         FROM lesson_instances li
         LEFT JOIN courses c ON li.course_id = c.id
         LEFT JOIN rooms r ON c.room_id = r.id
@@ -102,11 +155,22 @@ def manage_courses():
         if ld.get('data_lezione') and ld.get('corso_nome'):
             title = f"{ld['corso_nome']} ({ld.get('sala_nome', 'Sala N/D')})"
             events_js.append(f"""{{
+                id: "{ld['lesson_id']}",
                 title: "{title}",
                 start: "{ld['data_lezione']}",
                 allDay: true,
                 backgroundColor: "#0d6efd",
-                borderColor: "#0d6efd"
+                borderColor: "#0d6efd",
+                extendedProps: {{
+                    courseId: "{ld['course_id']}",
+                    corsoNome: "{ld['corso_nome']}",
+                    descrizione: "{ld.get('descrizione', '') or ''}",
+                    salaNome: "{ld.get('sala_nome', 'N/D')}",
+                    roomID: "{ld.get('room_id', '')}",
+                    istruttore: "{ld.get('i_nome', '')} {ld.get('i_cognome', '')}",
+                    instructorID: "{ld.get('instructor_id', '')}",
+                    dataLezione: "{ld['data_lezione']}"
+                }}
             }}""")
     events_json_str = "[" + ",".join(events_js) + "]"
 
@@ -168,10 +232,87 @@ def manage_courses():
         </div>
     </div>
 
+    <!-- MODALE ANTEPRIMA EVENTO (GOOGLE CALENDAR STYLE) -->
+    <div class="modal fade" id="eventPreviewModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-light">
+                    <h5 class="modal-title" id="previewTitle">Dettagli Corso</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p><strong>Data:</strong> <span id="previewDate"></span></p>
+                    <p><strong>Descrizione:</strong> <span id="previewDesc"></span></p>
+                    <p><strong>Sala:</strong> <span id="previewRoom"></span></p>
+                    <p><strong>Istruttore:</strong> <span id="previewInstructor"></span></p>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Chiudi</button>
+                    <button type="button" class="btn btn-primary" onclick="openEditModalFromPreview()">Modifica Corso</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALE MODIFICA CORSO (CON OPZIONE RIPETIZIONE SUCCESSIVA) -->
+    <div class="modal fade" id="editCourseModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <form method="POST">
+                    <input type="hidden" name="action" value="update">
+                    <input type="hidden" name="lesson_id" id="edit_lesson_id">
+                    <div class="modal-header bg-warning text-dark">
+                        <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Modifica Corso</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Nome Corso</label>
+                                <input type="text" name="nome" id="edit_nome" class="form-control" required>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Descrizione</label>
+                                <input type="text" name="descrizione" id="edit_descrizione" class="form-control">
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Sala</label>
+                                <select name="room_id" id="edit_room_id" class="form-select">
+                                    <option value="">Seleziona Sala...</option>
+                                    {rooms_options}
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">Istruttore</label>
+                                <select name="instructor_id" id="edit_instructor_id" class="form-select">
+                                    <option value="">Seleziona Istruttore...</option>
+                                    {instructors_options}
+                                </select>
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label fw-bold">Ambito della Modifica</label>
+                                <select name="scope" class="form-select" required>
+                                    <option value="future">Modifica questo evento e tutti i giorni ripetuti successivi</option>
+                                    <option value="single">Modifica solo questo evento (proprietà generali)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annulla</button>
+                        <button type="submit" class="btn btn-warning"><i class="bi bi-check-lg"></i> Salva Modifiche</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODALE CREAZIONE CORSO -->
     <div class="modal fade" id="createCourseModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-lg">
             <div class="modal-content">
                 <form method="POST">
+                    <input type="hidden" name="action" value="create">
                     <div class="modal-header bg-primary text-white">
                         <h5 class="modal-title"><i class="bi bi-calendar-event"></i> Crea Nuovo Corso / Attività</h5>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -186,7 +327,6 @@ def manage_courses():
                                 <label class="form-label">Descrizione</label>
                                 <input type="text" name="descrizione" class="form-control" placeholder="Dettagli corso...">
                             </div>
-                            
                             <div class="col-md-6">
                                 <label class="form-label">Sala</label>
                                 <select name="room_id" class="form-select">
@@ -201,7 +341,6 @@ def manage_courses():
                                     {instructors_options}
                                 </select>
                             </div>
-
                             <div class="col-md-4">
                                 <label class="form-label">Data Inizio</label>
                                 <input type="date" name="start_date" id="start_date" class="form-control" required value="{datetime.now().strftime('%Y-%m-%d')}">
@@ -220,7 +359,6 @@ def manage_courses():
                                     <option value="120">120 minuti (2h)</option>
                                 </select>
                             </div>
-
                             <div class="col-md-6">
                                 <label class="form-label">Orario Fine (Calcolato)</label>
                                 <input type="time" name="end_time" id="end_time" class="form-control" value="10:00" required readonly>
@@ -234,7 +372,6 @@ def manage_courses():
                                     <option value="monthly">Ogni mese</option>
                                 </select>
                             </div>
-
                             <div class="col-md-6" id="until_box">
                                 <label class="form-label">Ripeti fino alla data</label>
                                 <input type="date" name="repeat_until" class="form-control">
@@ -255,6 +392,8 @@ def manage_courses():
     </div>
 
     <script>
+    var selectedEventData = null;
+
     document.addEventListener('DOMContentLoaded', function() {{
         var calendarEl = document.getElementById('calendar');
         var calendar = new FullCalendar.Calendar(calendarEl, {{
@@ -276,11 +415,39 @@ def manage_courses():
                 document.getElementById('start_date').value = info.dateStr;
                 var myModal = new bootstrap.Modal(document.getElementById('createCourseModal'));
                 myModal.show();
+            }},
+            eventClick: function(info) {{
+                selectedEventData = info.event;
+                document.getElementById('previewTitle').innerText = info.event.extendedProps.corsoNome;
+                document.getElementById('previewDate').innerText = info.event.startStr;
+                document.getElementById('previewDesc').innerText = info.event.extendedProps.descrizione || 'Nessuna descrizione';
+                document.getElementById('previewRoom').innerText = info.event.extendedProps.salaNome;
+                document.getElementById('previewInstructor').innerText = info.event.extendedProps.istruttore || 'Non assegnato';
+                
+                var previewModal = new bootstrap.Modal(document.getElementById('eventPreviewModal'));
+                previewModal.show();
             }}
         }});
         calendar.render();
         toggleRecurrenceOptions();
     }});
+
+    function openEditModalFromPreview() {{
+        var previewModalEl = document.getElementById('eventPreviewModal');
+        var previewModal = bootstrap.Modal.getInstance(previewModalEl);
+        previewModal.hide();
+
+        if (selectedEventData) {{
+            document.getElementById('edit_lesson_id').value = selectedEventData.id;
+            document.getElementById('edit_nome').value = selectedEventData.extendedProps.corsoNome;
+            document.getElementById('edit_descrizione').value = selectedEventData.extendedProps.descrizione;
+            document.getElementById('edit_room_id').value = selectedEventData.extendedProps.roomID;
+            document.getElementById('edit_instructor_id').value = selectedEventData.extendedProps.instructorID;
+
+            var editModal = new bootstrap.Modal(document.getElementById('editCourseModal'));
+            editModal.show();
+        }}
+    }}
 
     function calculateEndTime() {{
         var startTime = document.getElementById('start_time').value;
