@@ -84,8 +84,9 @@ def init_db():
                             id SERIAL PRIMARY KEY,
                             nome TEXT,
                             cognome TEXT,
-                            email TEXT,
-                            telefono TEXT,
+                            email TEXT UNIQUE,
+                            cellulare TEXT,
+                            pin_code TEXT,
                             data_iscrizione TEXT
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS lesson_instances (
@@ -107,7 +108,6 @@ def init_db():
                             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                           )''')
         
-        # Inserimento dati di default per Postgres (Render)
         cursor.execute('SELECT COUNT(*) as cnt FROM roles')
         if cursor.fetchone()['cnt'] == 0:
             cursor.executemany('INSERT INTO roles (name) VALUES (%s)', [('admin',), ('superuser',), ('staff',)])
@@ -185,8 +185,9 @@ def init_db():
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             nome TEXT,
                             cognome TEXT,
-                            email TEXT,
-                            telefono TEXT,
+                            email TEXT UNIQUE,
+                            cellulare TEXT,
+                            pin_code TEXT,
                             data_iscrizione TEXT
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS lesson_instances (
@@ -208,19 +209,16 @@ def init_db():
                             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
                           )''')
         
-        # Inserisci ruoli di default se vuoti
         cursor.execute('SELECT COUNT(*) as cnt FROM roles')
         if cursor.fetchone()['cnt'] == 0:
             cursor.executemany('INSERT INTO roles (name) VALUES (?)', [('admin',), ('superuser',), ('staff',)])
 
-        # Inserisci utente admin di default se non esiste
         cursor.execute('SELECT COUNT(*) as cnt FROM sys_users WHERE username = ?', ('admin',))
         if cursor.fetchone()['cnt'] == 0:
             hashed_pw = generate_password_hash('admin')
             cursor.execute('INSERT INTO sys_users (username, password, role_id, nome, cognome) VALUES (?, ?, ?, ?, ?)', 
                            ('admin', hashed_pw, 1, 'Amministratore', 'Sistema'))
 
-        # Inserisci giorni di default se vuoti
         cursor.execute('SELECT COUNT(*) as cnt FROM days')
         if cursor.fetchone()['cnt'] == 0:
             default_days = [
@@ -229,7 +227,6 @@ def init_db():
             ]
             cursor.executemany('INSERT INTO days (nome, ordine) VALUES (?, ?)', default_days)
             
-        # Inserisci azienda di default se vuota
         cursor.execute('SELECT COUNT(*) as cnt FROM company_info')
         if cursor.fetchone()['cnt'] == 0:
             cursor.execute('INSERT INTO company_info (nome_palestra, logo_path) VALUES (?, ?)', ('GymFlow Palestra', 'static/logo.png'))
