@@ -70,7 +70,10 @@ def init_db():
         cursor.execute('''CREATE TABLE IF NOT EXISTS instructors (
                             id SERIAL PRIMARY KEY,
                             nome TEXT,
-                            cognome TEXT
+                            cognome TEXT,
+                            email TEXT,
+                            cellulare TEXT,
+                            specialita TEXT
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS rooms (
                             id SERIAL PRIMARY KEY,
@@ -167,7 +170,10 @@ def init_db():
         cursor.execute('''CREATE TABLE IF NOT EXISTS instructors (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             nome TEXT,
-                            cognome TEXT
+                            cognome TEXT,
+                            email TEXT,
+                            cellulare TEXT,
+                            specialita TEXT
                           )''')
         cursor.execute('''CREATE TABLE IF NOT EXISTS rooms (
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
