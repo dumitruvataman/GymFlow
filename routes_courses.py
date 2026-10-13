@@ -30,14 +30,14 @@ def manage_courses():
             
             try:
                 if DATABASE_URL:
-                    cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id)
-                                      VALUES (%s, %s, %s, %s) RETURNING id''',
-                                   (nome, descrizione, instructor_id or None, room_id or None))
+                    cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id, orario_inizio, orario_fine)
+                                      VALUES (%s, %s, %s, %s, %s, %s) RETURNING id''',
+                                   (nome, descrizione, instructor_id or None, room_id or None, start_time, end_time))
                     course_id = cursor.fetchone()['id']
                 else:
-                    cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id)
-                                      VALUES (?, ?, ?, ?)''',
-                                   (nome, descrizione, instructor_id or None, room_id or None))
+                    cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id, orario_inizio, orario_fine)
+                                      VALUES (?, ?, ?, ?, ?, ?)''',
+                                   (nome, descrizione, instructor_id or None, room_id or None, start_time, end_time))
                     course_id = cursor.lastrowid
                 
                 if start_date:
@@ -81,39 +81,37 @@ def manage_courses():
             instructor_id = request.form.get('instructor_id')
             room_id = request.form.get('room_id')
             start_date = request.form.get('start_date')
+            start_time = request.form.get('start_time', '09:00')
+            end_time = request.form.get('end_time', '10:00')
             target_date = request.form.get('target_date')
             scope = request.form.get('scope', 'future')
             
             try:
                 if scope == 'single':
-                    # Se l'utente vuole modificare SOLO la singola istanza della lezione:
-                    # Crea un nuovo corso derivato con i nuovi parametri solo per quella singola data
                     if DATABASE_URL:
-                        cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id)
-                                          VALUES (%s, %s, %s, %s) RETURNING id''',
-                                       (nome, descrizione, instructor_id or None, room_id or None))
+                        cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id, orario_inizio, orario_fine)
+                                          VALUES (%s, %s, %s, %s, %s, %s) RETURNING id''',
+                                       (nome, descrizione, instructor_id or None, room_id or None, start_time, end_time))
                         new_course_id = cursor.fetchone()['id']
                         if lesson_id:
                             cursor.execute('UPDATE lesson_instances SET course_id = %s, data_lezione = %s WHERE id = %s',
                                            (new_course_id, start_date or target_date, lesson_id))
                     else:
-                        cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id)
-                                          VALUES (?, ?, ?, ?)''',
-                                       (nome, descrizione, instructor_id or None, room_id or None))
+                        cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id, orario_inizio, orario_fine)
+                                          VALUES (?, ?, ?, ?, ?, ?)''',
+                                       (nome, descrizione, instructor_id or None, room_id or None, start_time, end_time))
                         new_course_id = cursor.lastrowid
                         if lesson_id:
                             cursor.execute('UPDATE lesson_instances SET course_id = ?, data_lezione = ? WHERE id = ?',
                                            (new_course_id, start_date or target_date, lesson_id))
                 else:
-                    # Aggiornamento standard delle informazioni generali del corso
                     if DATABASE_URL:
-                        cursor.execute('''UPDATE courses SET nome=%s, descrizione=%s, instructor_id=%s, room_id=%s WHERE id=%s''',
-                                       (nome, descrizione, instructor_id or None, room_id or None, course_id))
+                        cursor.execute('''UPDATE courses SET nome=%s, descrizione=%s, instructor_id=%s, room_id=%s, orario_inizio=%s, orario_fine=%s WHERE id=%s''',
+                                       (nome, descrizione, instructor_id or None, room_id or None, start_time, end_time, course_id))
                     else:
-                        cursor.execute('''UPDATE courses SET nome=?, descrizione=?, instructor_id=?, room_id=? WHERE id=?''',
-                                       (nome, descrizione, instructor_id or None, room_id or None, course_id))
+                        cursor.execute('''UPDATE courses SET nome=?, descrizione=?, instructor_id=?, room_id=?, orario_inizio=?, orario_fine=? WHERE id=?''',
+                                       (nome, descrizione, instructor_id or None, room_id or None, start_time, end_time, course_id))
                     
-                    # Se la data dell'istanza è stata cambiata, aggiorna la data specifica
                     if start_date and target_date and lesson_id:
                         if DATABASE_URL:
                             cursor.execute('UPDATE lesson_instances SET data_lezione = %s WHERE id = %s', (start_date, lesson_id))
@@ -138,7 +136,7 @@ def manage_courses():
     
     lessons = conn.execute('''
         SELECT li.id as lesson_id, li.data_lezione, c.id as course_id, c.nome as corso_nome, 
-               c.descrizione, c.instructor_id, c.room_id,
+               c.descrizione, c.instructor_id, c.room_id, c.orario_inizio, c.orario_fine,
                r.nome as sala_nome, i.nome as i_nome, i.cognome as i_cognome
         FROM lesson_instances li
         LEFT JOIN courses c ON li.course_id = c.id
@@ -161,7 +159,8 @@ def manage_courses():
     for l in lessons:
         ld = dict(l)
         if ld.get('data_lezione') and ld.get('corso_nome'):
-            orario_str = "09:00" 
+            orario_str = ld.get('orario_inizio') or '09:00'
+            orario_fine_str = ld.get('orario_fine') or '10:00'
             title = f"{orario_str} - {ld['corso_nome']} ({ld.get('sala_nome', 'Sala N/D')})"
             events_js.append(f"""{{
                 id: "{ld['lesson_id']}",
@@ -180,7 +179,8 @@ def manage_courses():
                     istruttore: "{ld.get('i_nome', '')} {ld.get('i_cognome', '')}",
                     instructorID: "{ld.get('instructor_id', '')}",
                     dataLezione: "{ld['data_lezione']}",
-                    orarioInizio: "{orario_str}"
+                    orarioInizio: "{orario_str}",
+                    orarioFine: "{orario_fine_str}"
                 }}
             }}""")
     events_json_str = "[" + ",".join(events_js) + "]"
@@ -253,7 +253,7 @@ def manage_courses():
                 </div>
                 <div class="modal-body">
                     <p><strong>Data:</strong> <span id="previewDate"></span></p>
-                    <p><strong>Orario:</strong> <span id="previewTime"></span></p>
+                    <p><strong>Orario:</strong> <span id="previewTime"></span> - <span id="previewEndTime"></span></p>
                     <p><strong>Descrizione:</strong> <span id="previewDesc"></span></p>
                     <p><strong>Sala:</strong> <span id="previewRoom"></span></p>
                     <p><strong>Istruttore:</strong> <span id="previewInstructor"></span></p>
@@ -477,6 +477,7 @@ def manage_courses():
                 
                 document.getElementById('previewDate').innerText = formattedDate;
                 document.getElementById('previewTime').innerText = info.event.extendedProps.orarioInizio || '09:00';
+                document.getElementById('previewEndTime').innerText = info.event.extendedProps.orarioFine || '10:00';
                 document.getElementById('previewDesc').innerText = info.event.extendedProps.descrizione || 'Nessuna descrizione';
                 document.getElementById('previewRoom').innerText = info.event.extendedProps.salaNome;
                 document.getElementById('previewInstructor').innerText = info.event.extendedProps.istruttore || 'Non assegnato';
@@ -525,6 +526,7 @@ def manage_courses():
             document.getElementById('edit_room_id').value = selectedEventData.extendedProps.roomID;
             document.getElementById('edit_instructor_id').value = selectedEventData.extendedProps.instructorID;
             document.getElementById('edit_start_time').value = selectedEventData.extendedProps.orarioInizio || '09:00';
+            document.getElementById('edit_end_time').value = selectedEventData.extendedProps.orarioFine || '10:00';
             
             var rawDate = selectedEventData.extendedProps.dataLezione;
             if (rawDate) {{
@@ -564,7 +566,7 @@ def manage_courses():
             var date = new Date();
             date.setHours(hours);
             date.setMinutes(minutes + duration);
-            document.getElementById('end_time').value = String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+            document.getElementById('edit_end_time').value = String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
         }}
     }}
 
