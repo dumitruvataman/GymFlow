@@ -22,8 +22,8 @@ def manage_courses():
             instructor_id = request.form.get('instructor_id')
             room_id = request.form.get('room_id')
             start_date = request.form.get('start_date')
-            start_time = request.form.get('start_time')
-            end_time = request.form.get('end_time')
+            start_time = request.form.get('start_time', '09:00')
+            end_time = request.form.get('end_time', '10:00')
             recurrence = request.form.get('recurrence', 'none')
             repeat_until = request.form.get('repeat_until', '')
             repeat_count = request.form.get('repeat_count', '')
@@ -40,6 +40,7 @@ def manage_courses():
                                    (nome, descrizione, instructor_id or None, room_id or None))
                     course_id = cursor.lastrowid
                 
+                # Salvataggio orario nei giorni/corso se necessario o gestione istanze
                 if start_date:
                     current_date = datetime.strptime(start_date, '%Y-%m-%d')
                     end_repeat_date = datetime.strptime(repeat_until, '%Y-%m-%d') if repeat_until else current_date + timedelta(days=365)
@@ -80,6 +81,7 @@ def manage_courses():
             instructor_id = request.form.get('instructor_id')
             room_id = request.form.get('room_id')
             start_date = request.form.get('start_date')
+            start_time = request.form.get('start_time', '09:00')
             scope = request.form.get('scope', 'future')
             
             try:
@@ -94,11 +96,15 @@ def manage_courses():
                     target_date = request.form.get('target_date')
                     if DATABASE_URL:
                         cursor.execute('DELETE FROM lesson_instances WHERE course_id = %s AND data_lezione >= %s', (course_id, target_date))
+                        cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (%s, %s, %s)',
+                                       (course_id, start_date, 'Programmata'))
                     else:
                         cursor.execute('DELETE FROM lesson_instances WHERE course_id = ? AND data_lezione >= ?', (course_id, target_date))
+                        cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (?, ?, ?)',
+                                       (course_id, start_date, 'Programmata'))
                     
-                    current_date = datetime.strptime(start_date, '%Y-%m-%d')
-                    for i in range(26): 
+                    current_date = datetime.strptime(start_date, '%Y-%m-%d') + timedelta(weeks=1)
+                    for i in range(25): 
                         date_str = current_date.strftime('%Y-%m-%d')
                         if DATABASE_URL:
                             cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (%s, %s, %s)',
@@ -149,7 +155,9 @@ def manage_courses():
     for l in lessons:
         ld = dict(l)
         if ld.get('data_lezione') and ld.get('corso_nome'):
-            title = f"{ld['corso_nome']} ({ld.get('sala_nome', 'Sala N/D')})"
+            # Ora predefinita o estratta, mostriamo ad esempio 09:00 o orario fisso
+            orario_str = "09:00" 
+            title = f"{orario_str} - {ld['corso_nome']} ({ld.get('sala_nome', 'Sala N/D')})"
             events_js.append(f"""{{
                 id: "{ld['lesson_id']}",
                 title: "{title}",
@@ -165,7 +173,8 @@ def manage_courses():
                     roomID: "{ld.get('room_id', '')}",
                     istruttore: "{ld.get('i_nome', '')} {ld.get('i_cognome', '')}",
                     instructorID: "{ld.get('instructor_id', '')}",
-                    dataLezione: "{ld['data_lezione']}"
+                    dataLezione: "{ld['data_lezione']}",
+                    orarioInizio: "{orario_str}"
                 }}
             }}""")
     events_json_str = "[" + ",".join(events_js) + "]"
@@ -238,6 +247,7 @@ def manage_courses():
                 </div>
                 <div class="modal-body">
                     <p><strong>Data:</strong> <span id="previewDate"></span></p>
+                    <p><strong>Orario:</strong> <span id="previewTime"></span></p>
                     <p><strong>Descrizione:</strong> <span id="previewDesc"></span></p>
                     <p><strong>Sala:</strong> <span id="previewRoom"></span></p>
                     <p><strong>Istruttore:</strong> <span id="previewInstructor"></span></p>
@@ -444,7 +454,6 @@ def manage_courses():
             }},
             dateClick: function(info) {{
                 document.getElementById('start_date').value = info.dateStr;
-                // Converte da YYYY-MM-DD a DD/MM/YYYY per la visualizzazione
                 var parts = info.dateStr.split('-');
                 if(parts.length === 3) {{
                     document.getElementById('start_date_display').value = parts[2] + '/' + parts[1] + '/' + parts[0];
@@ -455,12 +464,12 @@ def manage_courses():
             eventClick: function(info) {{
                 selectedEventData = info.event;
                 document.getElementById('previewTitle').innerText = info.event.extendedProps.corsoNome;
-                // Mostra data in formato europeo nell'anteprima
                 var rawDate = info.event.extendedProps.dataLezione;
                 var parts = rawDate ? rawDate.split('-') : [];
                 var formattedDate = parts.length === 3 ? parts[2] + '/' + parts[1] + '/' + parts[0] : rawDate;
                 
                 document.getElementById('previewDate').innerText = formattedDate;
+                document.getElementById('previewTime').innerText = info.event.extendedProps.orarioInizio || '09:00';
                 document.getElementById('previewDesc').innerText = info.event.extendedProps.descrizione || 'Nessuna descrizione';
                 document.getElementById('previewRoom').innerText = info.event.extendedProps.salaNome;
                 document.getElementById('previewInstructor').innerText = info.event.extendedProps.istruttore || 'Non assegnato';
@@ -471,7 +480,6 @@ def manage_courses():
         }});
         calendar.render();
         
-        // Imposta la data odierna in formato europeo all'avvio
         var today = new Date();
         var dd = String(today.getDate()).padStart(2, '0');
         var mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -483,7 +491,6 @@ def manage_courses():
     }});
 
     function updateISODate(val) {{
-        // Converte DD/MM/YYYY in YYYY-MM-DD per il campo nascosto inviato al server
         var parts = val.split('/');
         if (parts.length === 3) {{
             document.getElementById('edit_start_date').value = parts[2] + '-' + parts[1] + '-' + parts[0];
@@ -509,13 +516,13 @@ def manage_courses():
             document.getElementById('edit_descrizione').value = selectedEventData.extendedProps.descrizione;
             document.getElementById('edit_room_id').value = selectedEventData.extendedProps.roomID;
             document.getElementById('edit_instructor_id').value = selectedEventData.extendedProps.instructorID;
+            document.getElementById('edit_start_time').value = selectedEventData.extendedProps.orarioInizio || '09:00';
             
-            var rawDate = selectedEventData.extendedProps.dataLezione; // YYYY-MM-DD
+            var rawDate = selectedEventData.extendedProps.dataLezione;
             if (rawDate) {{
                 document.getElementById('edit_start_date').value = rawDate;
                 var parts = rawDate.split('-');
                 if(parts.length === 3) {{
-                    // Mostra in formato europeo DD/MM/YYYY
                     document.getElementById('edit_start_date_display').value = parts[2] + '/' + parts[1] + '/' + parts[0];
                 }}
             }}
