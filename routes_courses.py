@@ -258,6 +258,7 @@ def manage_courses():
                     <input type="hidden" name="action" value="update">
                     <input type="hidden" name="course_id" id="edit_course_id">
                     <input type="hidden" name="target_date" id="edit_target_date">
+                    <input type="hidden" name="start_date" id="edit_start_date">
                     <div class="modal-header bg-warning text-dark">
                         <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Modifica Completa Corso</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -287,8 +288,8 @@ def manage_courses():
                                 </select>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Data Inizio / Riferimento</label>
-                                <input type="date" name="start_date" id="edit_start_date" class="form-control" required>
+                                <label class="form-label">Data Inizio / Riferimento (GG/MM/AAAA)</label>
+                                <input type="text" id="edit_start_date_display" class="form-control" placeholder="GG/MM/AAAA" required onchange="updateISODate(this.value)">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Orario Inizio</label>
@@ -332,6 +333,7 @@ def manage_courses():
             <div class="modal-content">
                 <form method="POST">
                     <input type="hidden" name="action" value="create">
+                    <input type="hidden" name="start_date" id="start_date">
                     <div class="modal-header bg-primary text-white">
                         <h5 class="modal-title"><i class="bi bi-calendar-event"></i> Crea Nuovo Corso / Attività</h5>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -361,8 +363,8 @@ def manage_courses():
                                 </select>
                             </div>
                             <div class="col-md-4">
-                                <label class="form-label">Data Inizio</label>
-                                <input type="date" name="start_date" id="start_date" class="form-control" required value="{datetime.now().strftime('%Y-%m-%d')}">
+                                <label class="form-label">Data Inizio (GG/MM/AAAA)</label>
+                                <input type="text" id="start_date_display" class="form-control" placeholder="GG/MM/AAAA" required onchange="updateCreateISODate(this.value)">
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Orario Inizio</label>
@@ -442,13 +444,23 @@ def manage_courses():
             }},
             dateClick: function(info) {{
                 document.getElementById('start_date').value = info.dateStr;
+                // Converte da YYYY-MM-DD a DD/MM/YYYY per la visualizzazione
+                var parts = info.dateStr.split('-');
+                if(parts.length === 3) {{
+                    document.getElementById('start_date_display').value = parts[2] + '/' + parts[1] + '/' + parts[0];
+                }}
                 var myModal = new bootstrap.Modal(document.getElementById('createCourseModal'));
                 myModal.show();
             }},
             eventClick: function(info) {{
                 selectedEventData = info.event;
                 document.getElementById('previewTitle').innerText = info.event.extendedProps.corsoNome;
-                document.getElementById('previewDate').innerText = info.event.startStr;
+                // Mostra data in formato europeo nell'anteprima
+                var rawDate = info.event.extendedProps.dataLezione;
+                var parts = rawDate ? rawDate.split('-') : [];
+                var formattedDate = parts.length === 3 ? parts[2] + '/' + parts[1] + '/' + parts[0] : rawDate;
+                
+                document.getElementById('previewDate').innerText = formattedDate;
                 document.getElementById('previewDesc').innerText = info.event.extendedProps.descrizione || 'Nessuna descrizione';
                 document.getElementById('previewRoom').innerText = info.event.extendedProps.salaNome;
                 document.getElementById('previewInstructor').innerText = info.event.extendedProps.istruttore || 'Non assegnato';
@@ -458,8 +470,32 @@ def manage_courses():
             }}
         }});
         calendar.render();
+        
+        // Imposta la data odierna in formato europeo all'avvio
+        var today = new Date();
+        var dd = String(today.getDate()).padStart(2, '0');
+        var mm = String(today.getMonth() + 1).padStart(2, '0');
+        var yyyy = today.getFullYear();
+        document.getElementById('start_date_display').value = dd + '/' + mm + '/' + yyyy;
+        document.getElementById('start_date').value = yyyy + '-' + mm + '-' + dd;
+
         toggleRecurrenceOptions();
     }});
+
+    function updateISODate(val) {{
+        // Converte DD/MM/YYYY in YYYY-MM-DD per il campo nascosto inviato al server
+        var parts = val.split('/');
+        if (parts.length === 3) {{
+            document.getElementById('edit_start_date').value = parts[2] + '-' + parts[1] + '-' + parts[0];
+        }}
+    }}
+
+    function updateCreateISODate(val) {{
+        var parts = val.split('/');
+        if (parts.length === 3) {{
+            document.getElementById('start_date').value = parts[2] + '-' + parts[1] + '-' + parts[0];
+        }}
+    }}
 
     function openEditModalFromPreview() {{
         var previewModalEl = document.getElementById('eventPreviewModal');
@@ -473,7 +509,16 @@ def manage_courses():
             document.getElementById('edit_descrizione').value = selectedEventData.extendedProps.descrizione;
             document.getElementById('edit_room_id').value = selectedEventData.extendedProps.roomID;
             document.getElementById('edit_instructor_id').value = selectedEventData.extendedProps.instructorID;
-            document.getElementById('edit_start_date').value = selectedEventData.extendedProps.dataLezione;
+            
+            var rawDate = selectedEventData.extendedProps.dataLezione; // YYYY-MM-DD
+            if (rawDate) {{
+                document.getElementById('edit_start_date').value = rawDate;
+                var parts = rawDate.split('-');
+                if(parts.length === 3) {{
+                    // Mostra in formato europeo DD/MM/YYYY
+                    document.getElementById('edit_start_date_display').value = parts[2] + '/' + parts[1] + '/' + parts[0];
+                }}
+            }}
 
             var editModal = new bootstrap.Modal(document.getElementById('editCourseModal'));
             editModal.show();
