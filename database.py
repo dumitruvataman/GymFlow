@@ -111,7 +111,6 @@ def init_db():
                             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                           )''')
         
-        # Aggiunta colonne se la tabella esisteva già prima senza di esse
         try:
             cursor.execute("ALTER TABLE courses ADD COLUMN orario_inizio TEXT DEFAULT '09:00'")
             cursor.execute("ALTER TABLE courses ADD COLUMN orario_fine TEXT DEFAULT '10:00'")
