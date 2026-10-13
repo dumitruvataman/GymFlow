@@ -88,6 +88,7 @@ def manage_courses():
             
             try:
                 if scope == 'single':
+                    # 1. MODIFICA SOLO LA SINGOLA LEZIONE SELEZIONATA
                     if DATABASE_URL:
                         cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id, orario_inizio, orario_fine)
                                           VALUES (%s, %s, %s, %s, %s, %s) RETURNING id''',
@@ -104,22 +105,41 @@ def manage_courses():
                         if lesson_id:
                             cursor.execute('UPDATE lesson_instances SET course_id = ?, data_lezione = ? WHERE id = ?',
                                            (new_course_id, start_date or target_date, lesson_id))
-                else:
-                    if DATABASE_URL:
-                        cursor.execute('''UPDATE courses SET nome=%s, descrizione=%s, instructor_id=%s, room_id=%s, orario_inizio=%s, orario_fine=%s WHERE id=%s''',
-                                       (nome, descrizione, instructor_id or None, room_id or None, start_time, end_time, course_id))
-                    else:
-                        cursor.execute('''UPDATE courses SET nome=?, descrizione=?, instructor_id=?, room_id=?, orario_inizio=?, orario_fine=? WHERE id=?''',
-                                       (nome, descrizione, instructor_id or None, room_id or None, start_time, end_time, course_id))
+
+                elif scope == 'future':
+                    # 2. MODIFICA QUESTO EVENTO E TUTTI QUELLI SUCCESSIVI
+                    # Crea una nuova variante di corso per il futuro mantenendo intatto lo storico del passato
+                    ref_date = target_date or start_date
                     
-                    if start_date and target_date and lesson_id:
-                        if DATABASE_URL:
+                    if DATABASE_URL:
+                        cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id, orario_inizio, orario_fine)
+                                          VALUES (%s, %s, %s, %s, %s, %s) RETURNING id''',
+                                       (nome, descrizione, instructor_id or None, room_id or None, start_time, end_time))
+                        new_course_id = cursor.fetchone()['id']
+                        
+                        # Sposta tutte le lezioni esistenti da quella data in poi sul nuovo corso
+                        cursor.execute('''UPDATE lesson_instances SET course_id = %s 
+                                          WHERE course_id = %s AND data_lezione >= %s''',
+                                       (new_course_id, course_id, ref_date))
+                        
+                        # Se la data di questa specifica lezione è stata spostata, aggiornala
+                        if start_date and lesson_id:
                             cursor.execute('UPDATE lesson_instances SET data_lezione = %s WHERE id = %s', (start_date, lesson_id))
-                        else:
+                    else:
+                        cursor.execute('''INSERT INTO courses (nome, descrizione, instructor_id, room_id, orario_inizio, orario_fine)
+                                          VALUES (?, ?, ?, ?, ?, ?)''',
+                                       (nome, descrizione, instructor_id or None, room_id or None, start_time, end_time))
+                        new_course_id = cursor.lastrowid
+                        
+                        cursor.execute('''UPDATE lesson_instances SET course_id = ? 
+                                          WHERE course_id = ? AND data_lezione >= ?''',
+                                       (new_course_id, course_id, ref_date))
+                        
+                        if start_date and lesson_id:
                             cursor.execute('UPDATE lesson_instances SET data_lezione = ? WHERE id = ?', (start_date, lesson_id))
 
                 conn.commit()
-                log_activity(session['username'], f"Aggiornato corso ID: {course_id}")
+                log_activity(session['username'], f"Aggiornato corso ID: {course_id} con ambito {scope}")
                 flash('Modifiche salvate con successo!', 'success')
             except Exception as e:
                 conn.rollback()
@@ -329,7 +349,7 @@ def manage_courses():
                             <div class="col-12">
                                 <label class="form-label fw-bold">Ambito della Modifica</label>
                                 <select name="scope" class="form-select" required>
-                                    <option value="future">Applica modifiche al corso complessivo</option>
+                                    <option value="future">Applica modifiche a questo evento e a tutte le ripetizioni successive</option>
                                     <option value="single">Applica modifiche SOLO a questa singola occorrenza/lezione</option>
                                 </select>
                             </div>
