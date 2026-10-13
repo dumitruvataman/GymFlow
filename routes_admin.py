@@ -4,21 +4,102 @@ from templates_layout import render_page
 
 admin_bp = Blueprint('admin_bp', __name__)
 
-@admin_bp.route('/admin/users', methods=['GET'])
+@admin_bp.route('/users', methods=['GET'])
 def manage_users():
     if 'user_id' not in session or session.get('role') not in ['admin', 'superuser']:
         flash('Accesso negato.', 'error')
         return redirect(url_for('dashboard_bp.index'))
         
     conn = get_db()
-    users = conn.execute('SELECT * FROM users' if 'users' in [row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()] else 'SELECT 1 WHERE 0').fetchall()
+    users = conn.execute('SELECT u.*, r.name as role_name FROM sys_users u LEFT JOIN roles r ON u.role_id = r.id').fetchall()
     conn.close()
     
-    content = """
-    <h2>Gestione Utenti e Permessi</h2>
-    <p class="text-muted">Pannello di amministrazione per il controllo degli accessi.</p>
+    users_rows = ""
+    for u in users:
+        users_rows += f"""
+        <tr>
+            <td><strong>{u['username']}</strong></td>
+            <td>{u.get('nome', '') or ''} {u.get('cognome', '') or ''}</td>
+            <td>{u.get('email', '') or ''}</td>
+            <td><span class="badge bg-secondary">{u.get('role_name', 'N/D')}</span></td>
+        </tr>
+        """
+    if not users:
+        users_rows = '<tr><td colspan="4" class="text-center text-muted">Nessun utente registrato.</td></tr>'
+
+    content = f"""
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2>Gestione Utenti e Permessi</h2>
+            <p class="text-muted">Pannello di amministrazione per il controllo degli accessi di sistema.</p>
+        </div>
+    </div>
+    
     <div class="card shadow-sm p-4">
-        <p>Sezione utenti attiva.</p>
+        <div class="table-responsive">
+            <table class="table table-striped align-middle">
+                <thead>
+                    <tr>
+                        <th>Username</th>
+                        <th>Nome e Cognome</th>
+                        <th>Email</th>
+                        <th>Ruolo</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {users_rows}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    """
+    return render_page(content)
+
+@admin_bp.route('/logs', methods=['GET'])
+def view_logs():
+    if 'user_id' not in session or session.get('role') not in ['admin', 'superuser']:
+        flash('Accesso negato.', 'error')
+        return redirect(url_for('dashboard_bp.index'))
+        
+    conn = get_db()
+    logs = conn.execute('SELECT * FROM activity_logs ORDER BY timestamp DESC LIMIT 50').fetchall()
+    conn.close()
+    
+    logs_rows = ""
+    for l in logs:
+        logs_rows += f"""
+        <tr>
+            <td><code>{l['timestamp']}</code></td>
+            <td><strong>{l['username']}</strong></td>
+            <td>{l['action']}</td>
+        </tr>
+        """
+    if not logs:
+        logs_rows = '<tr><td colspan="3" class="text-center text-muted">Nessuna attività registrata.</td></tr>'
+
+    content = f"""
+    <div class="row mb-4">
+        <div class="col-12">
+            <h2>Registro Log Attività</h2>
+            <p class="text-muted">Ultime 50 azioni registrate nel sistema.</p>
+        </div>
+    </div>
+    
+    <div class="card shadow-sm p-4">
+        <div class="table-responsive">
+            <table class="table table-sm table-striped align-middle">
+                <thead>
+                    <tr>
+                        <th>Timestamp</th>
+                        <th>Utente</th>
+                        <th>Azione</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {logs_rows}
+                </tbody>
+            </table>
+        </div>
     </div>
     """
     return render_page(content)
