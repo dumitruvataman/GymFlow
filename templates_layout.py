@@ -2,7 +2,6 @@ def render_page(content, **context):
     from flask import render_template_string
     from database import get_db
     
-    # Recupera i dati aziendali dal database per la navbar
     try:
         conn = get_db()
         company = conn.execute("SELECT * FROM company_info LIMIT 1").fetchone()
@@ -13,7 +12,6 @@ def render_page(content, **context):
         nome_palestra = "GymFlow Admin"
         logo_path = "static/logo.png"
 
-    # Pulizia di sicurezza del percorso logo per evitare stringhe letterali o errori
     if not logo_path or "logo_path" in logo_path:
         logo_path = "static/logo.png"
     if logo_path.startswith('/'):
