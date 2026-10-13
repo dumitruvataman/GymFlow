@@ -74,7 +74,7 @@ def manage_courses():
                 flash(f"Errore durante la creazione del corso: {e}", 'error')
                 
         elif action == 'update':
-            lesson_id = request.form.get('lesson_id')
+            course_id = request.form.get('course_id')
             nome = request.form.get('nome')
             descrizione = request.form.get('descrizione', '')
             instructor_id = request.form.get('instructor_id')
@@ -84,39 +84,33 @@ def manage_courses():
             
             try:
                 if DATABASE_URL:
-                    res = cursor.execute('SELECT course_id, data_lezione FROM lesson_instances WHERE id = %s', (lesson_id,)).fetchone()
+                    cursor.execute('''UPDATE courses SET nome=%s, descrizione=%s, instructor_id=%s, room_id=%s WHERE id=%s''',
+                                   (nome, descrizione, instructor_id or None, room_id or None, course_id))
                 else:
-                    res = cursor.execute('SELECT course_id, data_lezione FROM lesson_instances WHERE id = ?', (lesson_id,)).fetchone()
+                    cursor.execute('''UPDATE courses SET nome=?, descrizione=?, instructor_id=?, room_id=? WHERE id=?''',
+                                   (nome, descrizione, instructor_id or None, room_id or None, course_id))
                 
-                if res:
-                    c_id = res['course_id']
-                    target_date = res['data_lezione']
-                    
+                if scope == 'future' and start_date:
+                    target_date = request.form.get('target_date')
                     if DATABASE_URL:
-                        cursor.execute('''UPDATE courses SET nome=%s, descrizione=%s, instructor_id=%s, room_id=%s WHERE id=%s''',
-                                       (nome, descrizione, instructor_id or None, room_id or None, c_id))
+                        cursor.execute('DELETE FROM lesson_instances WHERE course_id = %s AND data_lezione >= %s', (course_id, target_date))
                     else:
-                        cursor.execute('''UPDATE courses SET nome=?, descrizione=?, instructor_id=?, room_id=? WHERE id=?''',
-                                       (nome, descrizione, instructor_id or None, room_id or None, c_id))
+                        cursor.execute('DELETE FROM lesson_instances WHERE course_id = ? AND data_lezione >= ?', (course_id, target_date))
                     
-                    if scope == 'future' and start_date:
-                        cursor.execute('DELETE FROM lesson_instances WHERE course_id = ? AND data_lezione >= ?' if not DATABASE_URL else 'DELETE FROM lesson_instances WHERE course_id = %s AND data_lezione >= %s', (c_id, target_date))
-                        
-                        current_date = datetime.strptime(start_date, '%Y-%m-%d')
-                        for i in range(26): 
-                            date_str = current_date.strftime('%Y-%m-%d')
-                            if DATABASE_URL:
-                                cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (%s, %s, %s)',
-                                               (c_id, date_str, 'Programmata'))
-                            else:
-                                cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (?, ?, ?)',
-                                               (c_id, date_str, 'Programmata'))
-                            current_date += timedelta(weeks=1)
-                            
-                    flash('Corso e programmazione aggiornati con successo!', 'success')
+                    current_date = datetime.strptime(start_date, '%Y-%m-%d')
+                    for i in range(26): 
+                        date_str = current_date.strftime('%Y-%m-%d')
+                        if DATABASE_URL:
+                            cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (%s, %s, %s)',
+                                           (course_id, date_str, 'Programmata'))
+                        else:
+                            cursor.execute('INSERT INTO lesson_instances (course_id, data_lezione, stato) VALUES (?, ?, ?)',
+                                           (course_id, date_str, 'Programmata'))
+                        current_date += timedelta(weeks=1)
                         
                 conn.commit()
-                log_activity(session['username'], f"Aggiornato corso ID: {c_id}")
+                log_activity(session['username'], f"Aggiornato corso ID: {course_id}")
+                flash('Corso e programmazione aggiornati con successo!', 'success')
             except Exception as e:
                 conn.rollback()
                 flash(f"Errore durante l'aggiornamento: {e}", 'error')
@@ -262,7 +256,8 @@ def manage_courses():
             <div class="modal-content">
                 <form method="POST">
                     <input type="hidden" name="action" value="update">
-                    <input type="hidden" name="lesson_id" id="edit_lesson_id">
+                    <input type="hidden" name="course_id" id="edit_course_id">
+                    <input type="hidden" name="target_date" id="edit_target_date">
                     <div class="modal-header bg-warning text-dark">
                         <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Modifica Completa Corso</h5>
                         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -472,7 +467,8 @@ def manage_courses():
         previewModal.hide();
 
         if (selectedEventData) {{
-            document.getElementById('edit_lesson_id').value = selectedEventData.id;
+            document.getElementById('edit_course_id').value = selectedEventData.extendedProps.courseId;
+            document.getElementById('edit_target_date').value = selectedEventData.extendedProps.dataLezione;
             document.getElementById('edit_nome').value = selectedEventData.extendedProps.corsoNome;
             document.getElementById('edit_descrizione').value = selectedEventData.extendedProps.descrizione;
             document.getElementById('edit_room_id').value = selectedEventData.extendedProps.roomID;
